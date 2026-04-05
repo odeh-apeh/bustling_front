@@ -15,6 +15,7 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -27,37 +28,43 @@ const { height } = Dimensions.get("window");
 const isIOS = Platform.OS === 'ios';
 
 const COLORS = {
-  primary: '#0066CC', // Deeper blue
+  primary: '#0066CC',
   primaryLight: '#E6F2FF',
   secondary: '#4CAF50',
   accent: '#FF9800',
-  background: '#F8FAFC', // Slightly off-white background
+  background: '#F8FAFC',
   white: '#FFFFFF',
   text: '#333333',
   textLight: '#666666',
   border: '#E1E8F0',
 };
 
+// Category type definition
+interface Category {
+  id: number | null;
+  name: string;
+}
+
 export default function BuyScreen() {
   const router = useRouter();
   const [selectedType, setSelectedType] = useState<"product" | "service">("product");
-  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [isMarketVisible, setMarketVisible] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [checkingAuth, setCheckingAuth] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
 
-  // Check if user is logged in by calling chat token endpoint
+  // Check if user is logged in
   const checkIfLoggedIn = async (): Promise<boolean> => {
     try {
       setCheckingAuth(true);
       const response = await fetch(`${BASE_URL}/api/chat/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include', // This sends the session cookie
+        credentials: 'include',
       });
       
       if (response.ok) {
@@ -81,18 +88,56 @@ export default function BuyScreen() {
       const response = await fetch(`${BASE_URL}/api/products/categories?type=${type}`);
       const data = await response.json();
       
-      if (data.success) {
+      if (data.success && Array.isArray(data.categories)) {
+        // Categories should already have id and name from backend
         setCategories(data.categories);
       } else {
-        const fallbackCategories = type === 'service' 
-          ? ['All', 'Home Services', 'Professional Services', 'Beauty & Wellness', 'Creative Services', 'Tech Services', 'Others']
-          : ['All', 'Groceries and Food', 'Health and Wellness', 'Fashion and Apparel', 'Electronics and Gadgets', 'Beauty and Personal Care', 'Others'];
+        // Fallback categories with IDs
+        const fallbackCategories: Category[] = type === 'service' 
+          ? [
+              { id: null, name: 'All' },
+              { id: 1, name: 'Home Services' },
+              { id: 2, name: 'Professional Services' },
+              { id: 3, name: 'Beauty & Wellness' },
+              { id: 4, name: 'Creative Services' },
+              { id: 5, name: 'Tech Services' },
+              { id: 6, name: 'Others' }
+            ]
+          : [
+              { id: null, name: 'All' },
+              { id: 1, name: 'Groceries and Food' },
+              { id: 2, name: 'Health and Wellness' },
+              { id: 3, name: 'Fashion and Apparel' },
+              { id: 4, name: 'Electronics and Gadgets' },
+              { id: 5, name: 'Beauty and Personal Care' },
+              { id: 6, name: 'Automotive and Accessories' },
+              { id: 7, name: 'Others' }
+            ];
         setCategories(fallbackCategories);
       }
     } catch (error) {
-      const fallbackCategories = selectedType === 'service' 
-        ? ['All', 'Home Services', 'Professional Services', 'Beauty & Wellness', 'Creative Services', 'Tech Services', 'Others']
-        : ['All', 'Groceries and Food', 'Health and Wellness', 'Fashion and Apparel', 'Electronics and Gadgets', 'Beauty and Personal Care', 'Others'];
+      console.error('Error fetching categories:', error);
+      // Fallback categories with IDs
+      const fallbackCategories: Category[] = selectedType === 'service' 
+        ? [
+            { id: null, name: 'All' },
+            { id: 1, name: 'Home Services' },
+            { id: 2, name: 'Professional Services' },
+            { id: 3, name: 'Beauty & Wellness' },
+            { id: 4, name: 'Creative Services' },
+            { id: 5, name: 'Tech Services' },
+            { id: 6, name: 'Others' }
+          ]
+        : [
+            { id: null, name: 'All' },
+            { id: 1, name: 'Groceries and Food' },
+            { id: 2, name: 'Health and Wellness' },
+            { id: 3, name: 'Fashion and Apparel' },
+            { id: 4, name: 'Electronics and Gadgets' },
+            { id: 5, name: 'Beauty and Personal Care' },
+            { id: 6, name: 'Automotive and Accessories' },
+            { id: 7, name: 'Others' }
+          ];
       setCategories(fallbackCategories);
     }
   };
@@ -101,52 +146,68 @@ export default function BuyScreen() {
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      
-      const params = new URLSearchParams({
-        type: selectedType,
-        ...(selectedCategory !== 'All' && { category: selectedCategory }),
-        ...(searchQuery && { search: searchQuery })
+
+      const params = new URLSearchParams();
+      params.append("type", selectedType);
+
+      // Send category ID instead of name (only if not null)
+      if (selectedCategoryId !== null && selectedCategoryId !== 0) {
+        params.append("category", String(selectedCategoryId));
+      }
+
+      if (searchQuery && searchQuery.trim() !== "") {
+        params.append("search", searchQuery.trim());
+      }
+
+      const url = `${BASE_URL}/api/products?${params.toString()}`;
+      console.log("🔄 Fetching products from:", url);
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
       });
 
-      console.log("🔄 Fetching products...");
-      
-      const response = await fetch(`${BASE_URL}/api/products?${params}`);
+      console.log("📡 Response status:", response.status);
+
       const data = await response.json();
-      
+
       console.log("📦 API Response:", {
         success: data.success,
-        productCount: data.products?.length
+        productCount: data.products?.length,
       });
-      
-      if (data.success && data.products) {
-        // Debug: Show first product structure
+
+      if (data.success && Array.isArray(data.products)) {
         if (data.products.length > 0) {
-          console.log("🔍 First product fields:", Object.keys(data.products[0]));
-          console.log("🔍 First product data:", data.products[0]);
+          console.log("🔍 First product:", data.products[0]);
         }
-        
         setProducts(data.products);
       } else {
         console.log("❌ API Error:", data.message);
-        Alert.alert("Error", "Failed to load products");
+        Alert.alert("Error", data.message || "Failed to load products");
         setProducts([]);
       }
-    } catch (error) {
-      console.error('💥 Fetch error:', error);
-      Alert.alert("Error", "Cannot connect to server");
+    } catch (error: any) {
+      console.error("💥 Fetch error:", error);
+      Alert.alert("Error", error.message || "Cannot connect to server");
       setProducts([]);
     } finally {
       setLoading(false);
     }
   };
 
+  // Fetch categories when type changes
   useEffect(() => {
     fetchCategories(selectedType);
+    // Reset selected category when type changes
+    setSelectedCategoryId(null);
   }, [selectedType]);
 
+  // Fetch products when filters change
   useEffect(() => {
     fetchProducts();
-  }, [selectedType, selectedCategory, searchQuery]);
+  }, [selectedType, selectedCategoryId, searchQuery]);
 
   // Toggle Market Modal
   const toggleMarket = () => {
@@ -172,7 +233,6 @@ export default function BuyScreen() {
 
   // Handle message button click
   const handleMessageClick = async (item: any) => {
-    // Check if user is logged in
     const isLoggedIn = await checkIfLoggedIn();
     
     if (!isLoggedIn) {
@@ -187,7 +247,6 @@ export default function BuyScreen() {
       return;
     }
     
-    // Get correct field names with fallbacks
     const productName = item.title || item.name || item.product_name || "Product";
     const sellerName = item.seller || item.seller_name || item.vendor || 
                        item.user?.name || item.User?.name || "Seller";
@@ -198,27 +257,33 @@ export default function BuyScreen() {
       return;
     }
     
-    // User is logged in, proceed to chat
     router.push({
       pathname: "/chat/ChatScreen",
       params: { 
-        sellerId: sellerId, 
+        sellerId: String(sellerId), 
         sellerName: sellerName,
-        productId: item.id,
+        productId: String(item.id),
         productName: productName,
-        productPrice: item.price || 0,
+        productPrice: String(item.price || 0),
       },
+    });
+  };
+
+  const directToWhatsapp = (item: any) => {
+    const sellerPhone = "09036361445";
+    const whatsappUrl = `https://wa.me/${sellerPhone}`;
+    Linking.openURL(whatsappUrl).catch(() => {
+      Alert.alert("Error", "Cannot open WhatsApp");
     });
   };
 
   // Render item function
   const renderItem = ({ item }: { item: any }) => {
-    // Get correct field names with fallbacks
     const productName = item.name || item.title || item.product_name || "Product";
     const sellerName = item.seller_name || item.seller || item.vendor || 
                        item.user?.name || item.User?.name || "Seller";
     const location = item.seller_location || item.location || item.user?.location || item.User?.location || "Unknown";
-    const price = item.price || item.product_price || 0;
+    const price = parseFloat(item.price || item.product_price || 0);
 
     return (
       <View style={styles.card}>
@@ -237,18 +302,17 @@ export default function BuyScreen() {
         <Text style={styles.sellerText}>Seller: {sellerName}</Text>
         <Text style={styles.locationText}>Location: {location}</Text>
 
-        {/* Show service-specific info only for services */}
         {item.type === "service" && (
           <View style={styles.serviceExtraInfo}>
             <View style={styles.ratingContainer}>
               <Ionicons name="star" size={12} color="#FFD700" />
               <Text style={styles.ratingText}>{item.rating || 'New'}</Text>
             </View>
-            <Text style={styles.serviceTypeText}>{item.category}</Text>
+            <Text style={styles.serviceTypeText}>{item.category_name || 'Service'}</Text>
           </View>
         )}
 
-        <Text style={styles.price}>₦{parseFloat(price).toLocaleString()}</Text>
+        <Text style={styles.price}>₦{price.toLocaleString()}</Text>
 
         <View style={styles.cardButtons}>
           <TouchableOpacity 
@@ -268,30 +332,30 @@ export default function BuyScreen() {
                 router.push({
                   pathname: "/market/ServiceDetailsScreen",
                   params: { 
-                    serviceId: item.id,
+                    serviceId: String(item.id),
                     serviceName: productName,
                     sellerName: sellerName,
-                    price: price,
-                    serviceType: item.category,
-        // Add image URL if available
+                    price: String(price),
+                    serviceType: item.category_name || "Service",
                     ...(item.images && item.images.length > 0 && { 
-                    imageUri: `${BASE_URL}/uploads/${item.images[0]}` }),
+                      imageUri: `${BASE_URL}/uploads/${item.images[0]}`
+                    }),
                     description: item.description || "",
-        experience: item.experience || "",
-        rating: item.rating || "0.0",
-        location: location,
-        pricingType: item.pricing_type || "fixed",
+                    experience: item.experience || "",
+                    rating: item.rating || "0.0",
+                    location: location,
+                    pricingType: item.pricing_type || "fixed",
                   },
                 });
               } else {
                 router.push({
                   pathname: "/market/OrderScreen",
                   params: { 
-                    productId: item.id,
+                    productId: String(item.id),
                     productName: productName,
                     sellerName: sellerName,
-                    price: price,
-                    productType: item.category,
+                    price: String(price),
+                    productType: item.category_name || "Product",
                     ...(item.images && item.images.length > 0 && {
                       imageUri: `${BASE_URL}/uploads/${item.images[0]}`,
                     }),
@@ -303,6 +367,10 @@ export default function BuyScreen() {
             <Text style={styles.orderBtnText}>
               {item.type === "service" ? "Book" : "Order"}
             </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity onPress={() => directToWhatsapp(item)}>
+            <Ionicons name="logo-whatsapp" size={24} color="#25D366" />
           </TouchableOpacity>
         </View>
       </View>
@@ -331,6 +399,7 @@ export default function BuyScreen() {
             style={styles.searchInput}
             value={searchQuery}
             onChangeText={handleSearch}
+            placeholderTextColor="#999"
           />
         </View>
 
@@ -340,7 +409,7 @@ export default function BuyScreen() {
             style={[styles.toggleButton, selectedType === "product" && styles.activeToggle]}
             onPress={() => {
               setSelectedType("product");
-              setSelectedCategory("All");
+              setSelectedCategoryId(null);
             }}
           >
             <Text style={[styles.toggleText, selectedType === "product" && styles.activeToggleText]}>
@@ -352,7 +421,7 @@ export default function BuyScreen() {
             style={[styles.toggleButton, selectedType === "service" && styles.activeToggle]}
             onPress={() => {
               setSelectedType("service");
-              setSelectedCategory("All");
+              setSelectedCategoryId(null);
             }}
           >
             <Text style={[styles.toggleText, selectedType === "service" && styles.activeToggleText]}>
@@ -370,20 +439,20 @@ export default function BuyScreen() {
         >
           {categories.map((cat) => (
             <TouchableOpacity
-              key={cat}
+              key={cat.id !== null ? cat.id : 'all'}
               style={[
                 styles.categoryButton,
-                selectedCategory === cat && styles.activeCategory,
+                selectedCategoryId === cat.id && styles.activeCategory,
               ]}
-              onPress={() => setSelectedCategory(cat)}
+              onPress={() => setSelectedCategoryId(cat.id)}
             >
               <Text
                 style={[
                   styles.categoryText,
-                  selectedCategory === cat && styles.activeCategoryText,
+                  selectedCategoryId === cat.id && styles.activeCategoryText,
                 ]}
               >
-                {cat}
+                {cat.name}
               </Text>
             </TouchableOpacity>
           ))}
@@ -408,7 +477,7 @@ export default function BuyScreen() {
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyText}>
-                  No {selectedType}s found{selectedCategory !== 'All' ? ` in ${selectedCategory}` : ''}
+                  No {selectedType}s found{selectedCategoryId !== null ? ` in this category` : ''}
                 </Text>
               </View>
             }
@@ -416,89 +485,87 @@ export default function BuyScreen() {
         )}
 
         {/* Bottom Navigation */}
-                  {isIOS ? (
-                    <BlurView intensity={90} style={styles.bottomNavWrapper}>
-                      <View style={styles.bottomNav}>
-                        <TouchableOpacity style={styles.bottomNavButton} onPress={() => router.push("/home/Homescreen")}>
-                          <Ionicons name="home" size={24} color={COLORS.primary} />
-                          <Text style={[styles.bottomNavText, { color: COLORS.primary }]}>Home</Text>
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity style={styles.bottomNavButton} onPress={toggleMarket}>
-                          <Ionicons name="cart-outline" size={24} color={isMarketVisible ? COLORS.primary : COLORS.textLight} />
-                          <Text style={[styles.bottomNavText, { color: isMarketVisible ? COLORS.primary : COLORS.textLight }]}>
-                            Market
-                          </Text>
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity 
-                          style={styles.bottomNavButton}
-                          onPress={() => router.push("/orders/OrderHistoryScreen")}
-                        >
-                          <Ionicons name="list" size={24} color={COLORS.textLight} />
-                          <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Orders</Text>
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity 
-                          style={styles.bottomNavButton}
-                          onPress={() => router.push("/messages/MessagesScreen")}
-                        >
-                          <Ionicons name="chatbubble-outline" size={24} color={COLORS.textLight} />
-                          <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Messages</Text>
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity 
-                          style={styles.bottomNavButton}
-                          onPress={() => router.push("/profile/ProfileScreen")}
-                        >
-                          <Ionicons name="person-outline" size={24} color={COLORS.textLight} />
-                          <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Profile</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </BlurView>
-                  ) : (
-                    <SafeAreaView edges={['bottom']} style={styles.bottomNavWrapper}>
-                      <View style={styles.bottomNav}>
-                        <TouchableOpacity style={styles.bottomNavButton}>
-                          <Ionicons name="home" size={24} color={COLORS.primary} />
-                          <Text style={[styles.bottomNavText, { color: COLORS.primary }]}>Home</Text>
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity style={styles.bottomNavButton} onPress={toggleMarket}>
-                          <Ionicons name="cart-outline" size={24} color={isMarketVisible ? COLORS.primary : COLORS.textLight} />
-                          <Text style={[styles.bottomNavText, { color: isMarketVisible ? COLORS.primary : COLORS.textLight }]}>
-                            Market
-                          </Text>
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity 
-                          style={styles.bottomNavButton}
-                          onPress={() => router.push("/orders/OrderHistoryScreen")}
-                        >
-                          <Ionicons name="list" size={24} color={COLORS.textLight} />
-                          <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Orders</Text>
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity 
-                          style={styles.bottomNavButton}
-                          onPress={() => router.push("/messages/MessagesScreen")}
-                        >
-                          <Ionicons name="chatbubble-outline" size={24} color={COLORS.textLight} />
-                          <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Messages</Text>
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity 
-                          style={styles.bottomNavButton}
-                          onPress={() => router.push("/profile/ProfileScreen")}
-                        >
-                          <Ionicons name="person-outline" size={24} color={COLORS.textLight} />
-                          <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Profile</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </SafeAreaView>
-                  )}
-        
-        
+        {isIOS ? (
+          <BlurView intensity={90} style={styles.bottomNavWrapper}>
+            <View style={styles.bottomNav}>
+              <TouchableOpacity style={styles.bottomNavButton} onPress={() => router.push("/home/Homescreen")}>
+                <Ionicons name="home" size={24} color={COLORS.primary} />
+                <Text style={[styles.bottomNavText, { color: COLORS.primary }]}>Home</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.bottomNavButton} onPress={toggleMarket}>
+                <Ionicons name="cart-outline" size={24} color={isMarketVisible ? COLORS.primary : COLORS.textLight} />
+                <Text style={[styles.bottomNavText, { color: isMarketVisible ? COLORS.primary : COLORS.textLight }]}>
+                  Market
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.bottomNavButton}
+                onPress={() => router.push("/orders/OrderHistoryScreen")}
+              >
+                <Ionicons name="list" size={24} color={COLORS.textLight} />
+                <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Orders</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.bottomNavButton}
+                onPress={() => router.push("/messages/MessagesScreen")}
+              >
+                <Ionicons name="chatbubble-outline" size={24} color={COLORS.textLight} />
+                <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Messages</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.bottomNavButton}
+                onPress={() => router.push("/profile/ProfileScreen")}
+              >
+                <Ionicons name="person-outline" size={24} color={COLORS.textLight} />
+                <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Profile</Text>
+              </TouchableOpacity>
+            </View>
+          </BlurView>
+        ) : (
+          <SafeAreaView edges={['bottom']} style={styles.bottomNavWrapper}>
+            <View style={styles.bottomNav}>
+              <TouchableOpacity style={styles.bottomNavButton} onPress={() => router.push("/home/Homescreen")}>
+                <Ionicons name="home" size={24} color={COLORS.primary} />
+                <Text style={[styles.bottomNavText, { color: COLORS.primary }]}>Home</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.bottomNavButton} onPress={toggleMarket}>
+                <Ionicons name="cart-outline" size={24} color={isMarketVisible ? COLORS.primary : COLORS.textLight} />
+                <Text style={[styles.bottomNavText, { color: isMarketVisible ? COLORS.primary : COLORS.textLight }]}>
+                  Market
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.bottomNavButton}
+                onPress={() => router.push("/orders/OrderHistoryScreen")}
+              >
+                <Ionicons name="list" size={24} color={COLORS.textLight} />
+                <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Orders</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.bottomNavButton}
+                onPress={() => router.push("/messages/MessagesScreen")}
+              >
+                <Ionicons name="chatbubble-outline" size={24} color={COLORS.textLight} />
+                <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Messages</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.bottomNavButton}
+                onPress={() => router.push("/profile/ProfileScreen")}
+              >
+                <Ionicons name="person-outline" size={24} color={COLORS.textLight} />
+                <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Profile</Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -579,6 +646,7 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
     marginRight: 8,
     backgroundColor: '#f8f8f8',
+    justifyContent: 'center',
   },
   activeCategory: { 
     backgroundColor: "#007AFF", 
@@ -607,7 +675,7 @@ const styles = StyleSheet.create({
   
   card: {
     backgroundColor: "#fafafa",
-    width: "48%",
+    width: "58%",
     padding: 12,
     borderRadius: 12,
     shadowColor: "#000",
@@ -645,7 +713,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 
-  // Service-specific styles
   serviceExtraInfo: {
     marginBottom: 8,
   },
@@ -675,6 +742,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 4,
+    alignItems: "center",
+    gap: 8,
   },
   msgBtn: {
     borderWidth: 1,
@@ -705,7 +774,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-   bottomNavWrapper: {
+  bottomNavWrapper: {
     position: "absolute",
     bottom: 0,
     left: 0,

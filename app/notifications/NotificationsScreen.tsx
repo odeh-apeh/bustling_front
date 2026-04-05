@@ -34,7 +34,7 @@ export default function NotificationsScreen() {
   // Fetch notifications from backend
   const fetchNotifications = async () => {
     try {
-      const response = await fetch('http://172.20.10.5:5000/api/notifications', {
+      const response = await fetch(`${BASE_URL}/api/notifications`, {
         method: 'GET',
         credentials: 'include',
         headers: {
