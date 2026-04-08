@@ -410,17 +410,35 @@ export default function OrdersManagementScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: '#f8f9fa' }}>
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-        <Stack.Screen 
-          options={{ 
-            title: 'Orders Management',
-            headerStyle: {
-              backgroundColor: '#0A6BFF',
-            },
-            headerTintColor: '#fff',
-            headerTitleStyle: {
-              fontWeight: '600',
-            },
-          }} 
+        <Stack.Screen
+          options={{
+            header: () => (
+              <View
+                style={{
+                  height: 90,
+                  backgroundColor: '#3986f9',
+                  flexDirection: 'row',
+                  alignItems: 'flex-end',
+                  paddingHorizontal: 16,
+                  paddingBottom: 14,
+                }}
+              >
+                <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
+                  <Ionicons name="arrow-back" size={24} color="#fff" />
+                </TouchableOpacity>
+        
+                <Text
+                  style={{
+                    color: '#fff',
+                    fontSize: 20,
+                    fontWeight: '600',
+                  }}
+                >
+                  Order Management
+                </Text>
+              </View>
+            ),
+          }}
         />
         
         {/* Fixed Header Section */}

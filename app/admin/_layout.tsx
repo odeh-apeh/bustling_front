@@ -28,7 +28,7 @@ export default function AdminLayout() {
       screenOptions={{
         headerShown: true,
         headerStyle: {
-          backgroundColor: '#0A6BFF',
+          backgroundColor: '#3986f9',
         },
         headerTintColor: '#fff',
         headerTitleStyle: {

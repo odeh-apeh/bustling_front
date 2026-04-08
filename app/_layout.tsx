@@ -10,6 +10,8 @@ import { OverlayProvider } from "stream-chat-expo";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ChatProvider } from '../contexts/ChatContext';
+import React from 'react';
+import { ToastProvider } from '@/contexts/toast-content';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -60,6 +62,7 @@ export default function RootLayout() {
   // AFTER onboarding: Always start with login screen
   return (
     <ThemeProvider value={theme}>
+      <ToastProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
       <ChatProvider>
         <OverlayProvider>
@@ -68,6 +71,7 @@ export default function RootLayout() {
             <Stack.Screen name="index" />
             <Stack.Screen name="login/LoginScreen" />
             <Stack.Screen name="signup/SignupScreen" />
+            <Stack.Screen name="login/ForgotPasswordScreen" />
           
           <Stack.Screen name="home/Homescreen" />
           <Stack.Screen name="profile/ProfileScreen" />
@@ -97,6 +101,9 @@ export default function RootLayout() {
           <Stack.Screen name="delivery/MyDeliveriesScreen" />
           <Stack.Screen name="delivery/AgreePriceScreen" />
           <Stack.Screen name="auth/account-support" />
+          {/* Customer support */}
+          <Stack.Screen name="support/SupportScreen"/>
+
           <Stack.Screen name="admin" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
         </Stack>
@@ -105,6 +112,7 @@ export default function RootLayout() {
       </OverlayProvider>
       </ChatProvider>
       </GestureHandlerRootView>
+      </ToastProvider>
     </ThemeProvider>
   );
 }

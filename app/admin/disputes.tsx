@@ -20,6 +20,7 @@ import { Stack, useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView} from 'react-native-safe-area-context';
 import { BASE_URL } from "@/helpers/core-service";
+import { useToast } from "@/contexts/toast-content";
 
 
 const { width, height } = Dimensions.get("window");
@@ -103,6 +104,7 @@ export default function AdminDisputesScreen() {
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const { showToast } = useToast();
   const [stats, setStats] = useState({
     total: 0,
     pending: 0,
@@ -146,11 +148,11 @@ export default function AdminDisputesScreen() {
         setDisputes(data.disputes || []);
         setStats(data.stats || stats);
       } else {
-        Alert.alert("Error", data.message || "Failed to load disputes");
+        showToast(data.message || "Failed to load disputes", "error");
       }
     } catch (error) {
       console.error("Fetch disputes error:", error);
-      Alert.alert("Error", "Failed to load disputes. Please check your connection.");
+      showToast("Failed to load disputes. Please check your connection.", "error");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -225,11 +227,32 @@ export default function AdminDisputesScreen() {
     <SafeAreaView style={styles.safeArea}>
       <Stack.Screen
         options={{
-          headerShown: true,
-          headerTitle: "Dispute Management",
-          headerStyle: { backgroundColor: "#0A6BFF" },
-          headerTintColor: "#fff",
-          headerTitleStyle: { fontWeight: '600' },
+          header: () => (
+            <View
+              style={{
+                height: 90,
+                backgroundColor: '#3986f9',
+                flexDirection: 'row',
+                alignItems: 'flex-end',
+                paddingHorizontal: 16,
+                paddingBottom: 14,
+              }}
+            >
+              <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
+                <Ionicons name="arrow-back" size={24} color="#fff" />
+              </TouchableOpacity>
+      
+              <Text
+                style={{
+                  color: '#fff',
+                  fontSize: 20,
+                  fontWeight: '600',
+                }}
+              >
+                Dispute Management
+              </Text>
+            </View>
+          ),
         }}
       />
 

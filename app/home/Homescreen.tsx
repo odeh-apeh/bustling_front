@@ -377,7 +377,7 @@ export default function HomeScreen() {
             {/* About Errandly (Carousel) */}
             <View style={styles.sectionContainer}>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Why Choose Errandly</Text>
+                <Text style={styles.sectionTitle}>Why Choose Bustling</Text>
               </View>
               
               <View style={styles.carouselCard}>
@@ -1045,3 +1045,5 @@ modalBottomSafeArea: {
     fontWeight: 'bold',
   },
 });
+
+//

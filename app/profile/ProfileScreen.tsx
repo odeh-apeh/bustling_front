@@ -195,23 +195,29 @@ export default function ProfileScreen() {
   ];
 
   const supportItems = [
-    {
-      title: "Help & Support",
-      subtitle: "Get help with your account",
-      icon: "help-circle-outline",
-      screen: "/support/HelpScreen",
-    },
-    {
-      title: "Trust & Safety",
-      subtitle: "Learn about our safety measures",
-      icon: "shield-checkmark-outline",
-      screen: "/support/TrustSafetyScreen",
-    },
+    // {
+    //   title: "Help & Support",
+    //   subtitle: "Get help with your account",
+    //   icon: "help-circle-outline",
+    //   screen: "/support/HelpScreen",
+    // },
+    // {
+    //   title: "Trust & Safety",
+    //   subtitle: "Learn about our safety measures",
+    //   icon: "shield-checkmark-outline",
+    //   screen: "/support/TrustSafetyScreen",
+    // },
     {
       title: "Change Password",
       subtitle: "Update your password",
       icon: "lock-closed-outline",
       screen: "/profile/ChangePasswordScreen",
+    },
+    {
+      title: "Customer Support",
+      subtitle: "Get help with your account",
+      icon: "headset-outline",
+      screen: "/support/CustomerServiceScreen",
     },
   ];
 
@@ -397,11 +403,13 @@ export default function ProfileScreen() {
             title={item.title}
             subtitle={item.subtitle}
             onPress={() => router.push(item.screen as any)}  // ✅ SIMPLE NAVIGATION
+            
           />
         ))}
         </View>
+        
 
-        <View style={{ height: 50 }} />
+        <View style={{ height: 30 }} />
       </ScrollView>
     </View>
   );

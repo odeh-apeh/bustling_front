@@ -329,18 +329,37 @@ export default function UsersManagementScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <Stack.Screen 
-        options={{ 
-          title: 'User Management',
-          headerStyle: {
-            backgroundColor: '#0A6BFF',
-          },
-          headerTintColor: '#fff',
-          headerTitleStyle: {
+      
+      <Stack.Screen
+  options={{
+    header: () => (
+      <View
+        style={{
+          height: 90,
+          backgroundColor: '#3986f9',
+          flexDirection: 'row',
+          alignItems: 'flex-end',
+          paddingHorizontal: 16,
+          paddingBottom: 14,
+        }}
+      >
+        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
+          <Ionicons name="arrow-back" size={24} color="#fff" />
+        </TouchableOpacity>
+
+        <Text
+          style={{
+            color: '#fff',
+            fontSize: 20,
             fontWeight: '600',
-          },
-        }} 
-      />
+          }}
+        >
+          User Management
+        </Text>
+      </View>
+    ),
+  }}
+/>
       
       {/* Search and Filter Bar */}
       <View style={styles.searchContainer}>

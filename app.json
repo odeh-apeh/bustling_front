@@ -15,19 +15,13 @@
     "ios": {
       "supportsTablet": true
     },
-    "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
-      },
+    "android":{
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.RECORD_AUDIO",
         "android.permission.RECORD_AUDIO"
-      ]
+      ],
+      "package": "com.lan24.bustling.app"
     },
     "plugins": [
       "expo-router",
@@ -59,15 +53,15 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "181627b7-d4ec-4aff-92ff-f0a56ae610e0"
+        "projectId": "af1941ef-b3ad-45e9-8dec-8f9257c44be7"
       }
     },
-    "owner": "lighthold",
     "runtimeVersion": {
       "policy": "appVersion"
     },
     "updates": {
       "url": "https://u.expo.dev/181627b7-d4ec-4aff-92ff-f0a56ae610e0"
-    }
+    },
+    "owner": "lan24"
   }
 }

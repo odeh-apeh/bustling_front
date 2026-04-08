@@ -207,25 +207,35 @@ export default function PendingWithdrawalsScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <Stack.Screen 
-        options={{ 
-          headerTitle: 'Pending Withdrawals',
-          headerStyle: {
-            backgroundColor: '#0A6BFF',
-          },
-          headerTintColor: '#fff',
-          headerTitleStyle: {
-            fontWeight: '600',
-          },
-          headerLeft: () => (
-            <TouchableOpacity 
-              onPress={() => router.back()} 
-              style={styles.backButton}
+      <Stack.Screen
+        options={{
+          header: () => (
+            <View
+              style={{
+                height: 90,
+                backgroundColor: '#3986f9',
+                flexDirection: 'row',
+                alignItems: 'flex-end',
+                paddingHorizontal: 16,
+                paddingBottom: 14,
+              }}
             >
-              <Ionicons name="chevron-back" size={24} color="#fff" />
-            </TouchableOpacity>
+              <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
+                <Ionicons name="arrow-back" size={24} color="#fff" />
+              </TouchableOpacity>
+      
+              <Text
+                style={{
+                  color: '#fff',
+                  fontSize: 20,
+                  fontWeight: '600',
+                }}
+              >
+                Pending Withdrawals
+              </Text>
+            </View>
           ),
-        }} 
+        }}
       />
       
       <View style={styles.container}>

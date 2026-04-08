@@ -173,7 +173,7 @@ export default function OrderHistoryScreen() {
         
         setOrders(transformedOrders);
       } else {
-        Alert.alert("Error", "Failed to load orders");
+        Alert.alert("Error", "Failed to load orders" + data.message);
       }
     } catch (error) {
       console.error('Error fetching orders:', error);

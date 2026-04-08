@@ -12,7 +12,7 @@ import {
   RefreshControl,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
-import { Stack } from "expo-router";
+import { router, Stack } from "expo-router";
 import { SafeAreaView} from 'react-native-safe-area-context';
 import { BASE_URL } from "@/helpers/core-service";
 
@@ -205,9 +205,32 @@ export default function AdminEscrowsScreen() {
     <SafeAreaView style={styles.container}>
       <Stack.Screen
         options={{
-          headerTitle: "Escrow Management",
-          headerStyle: { backgroundColor: "#3B82F6" },
-          headerTintColor: "#fff",
+          header: () => (
+            <View
+              style={{
+                height: 90,
+                backgroundColor: '#3986f9',
+                flexDirection: 'row',
+                alignItems: 'flex-end',
+                paddingHorizontal: 16,
+                paddingBottom: 14,
+              }}
+            >
+              <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
+                <Ionicons name="arrow-back" size={24} color="#fff" />
+              </TouchableOpacity>
+      
+              <Text
+                style={{
+                  color: '#fff',
+                  fontSize: 20,
+                  fontWeight: '600',
+                }}
+              >
+                Escrow Management
+              </Text>
+            </View>
+          ),
         }}
       />
 

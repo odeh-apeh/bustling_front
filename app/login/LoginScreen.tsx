@@ -9,12 +9,12 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
 } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from "@expo/vector-icons";
 import { BASE_URL } from "@/helpers/core-service";
+import { useToast } from "@/contexts/toast-content";
 
 const { width } = Dimensions.get("window");
 
@@ -25,6 +25,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [showPasswordScreen, setShowPasswordScreen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const {showToast} = useToast();
 
   // Load saved phone number when component mounts
   useEffect(() => {
@@ -55,7 +56,7 @@ export default function LoginScreen() {
 
   const handlePhoneContinue = () => {
     if (!userPhone) {
-      Alert.alert("Error", "Please enter your phone number");
+      showToast("Please enter your phone number", "error");
       return;
     }
 
@@ -67,7 +68,7 @@ export default function LoginScreen() {
   const handleLogin = async () => {
     try {
       if (!userPhone || !password) {
-        Alert.alert("Error", "Please enter your password");
+        showToast("Please enter your password", "error");
         return;
       }
 
@@ -96,13 +97,14 @@ export default function LoginScreen() {
         
         // Navigate to home - user stays logged in until they close the app
         router.replace("/home/Homescreen");
+        await AsyncStorage.setItem('user_id', data.userId.toString());
       } else {
-        Alert.alert("Login Failed", data.message || "Invalid phone number or password");
+        showToast(data.message || "Invalid phone number or password", "error");
       }
       
     } catch (error: any) {
       console.error('💥 Login error:', error);
-      Alert.alert("Error", error.message || "Network error. Please try again.");
+      showToast("Network error. Please try again.", "error");
     } finally {
       setIsLoading(false);
     }
@@ -123,7 +125,7 @@ export default function LoginScreen() {
     return (
       <View style={styles.container}>
         <Stack.Screen options={{ headerShown: false }} />
-        <Text style={styles.header}>Welcome to Errandly</Text>
+        <Text style={styles.header}>Welcome to Bustling</Text>
         <Text style={styles.subText}>Enter your phone number to continue</Text>
         
         <View style={styles.form}>
@@ -143,6 +145,13 @@ export default function LoginScreen() {
           >
             <Text style={styles.buttonText}>Continue</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+              onPress={() => router.push('/login/ForgotPasswordScreen')}
+              style={{ marginTop: 15 }}
+            >
+              <Text style={styles.linkText}>Forgot Password?</Text>
+            </TouchableOpacity>
 
           <TouchableOpacity
             onPress={() => router.push("/signup/SignupScreen")}
@@ -219,6 +228,13 @@ export default function LoginScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
+              onPress={() => router.push('/login/ForgotPasswordScreen')}
+              style={{ marginTop: 15 }}
+            >
+              <Text style={styles.linkText}>Forgot Password?</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               onPress={() => router.push("/signup/SignupScreen")}
               style={{ marginTop: 10 }}
             >
@@ -226,110 +242,196 @@ export default function LoginScreen() {
             </TouchableOpacity>
           </View>
         </ScrollView>
+        
       </KeyboardAvoidingView>
     </>
   );
 }
 
-const styles = StyleSheet.create({
+
+const colors = {
+  primary: "#0A6BFF",
+  primaryLight: "#EBF2FF",
+  primaryMid: "#D0E4FF",
+  primaryFaint: "#F5F9FF",
+  text: "#224fc3",
+  textSecondary: "#5A6A85",
+  textMuted: "#9AAAC0",
+  surface: "#FFFFFF",
+  surfaceInput: "#F4F7FB",
+  surfaceCard: "#F8FAFD",
+  border: "#E4EBF5",
+  borderFocus: "#0A6BFF",
+};
+
+export const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    backgroundColor: "#fff",
-    padding: 20,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 24,
+    paddingVertical: 32,
     justifyContent: "center",
     alignItems: "center",
   },
+
   header: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: "#0A6BFF",
-    marginBottom: 6,
+    fontSize: 30,
+    fontWeight: "800",
+    color: colors.text,
+    marginBottom: 8,
     textAlign: "center",
+    letterSpacing: -0.6,
   },
   subText: {
-    color: "#666",
+    color: colors.textSecondary,
     fontSize: 15,
-    marginBottom: 25,
+    marginBottom: 30,
     textAlign: "center",
+    lineHeight: 22,
   },
+
   phoneDisplay: {
-    alignItems: 'center',
-    marginBottom: 20,
-    padding: 15,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 10,
-    width: '100%',
+    alignItems: "center",
+    marginBottom: 24,
+    padding: 18,
+    backgroundColor: colors.primaryFaint,
+    borderRadius: 16,
+    width: "100%",
+    borderWidth: 1,
+    borderColor: colors.primaryMid,
   },
   phoneLabel: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: 11,
+    color: colors.textMuted,
     marginBottom: 5,
+    textTransform: "uppercase",
+    letterSpacing: 1.4,
+    fontWeight: "600",
   },
   phoneNumber: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0A6BFF',
-    marginBottom: 10,
+    fontSize: 20,
+    fontWeight: "700",
+    color: colors.text,
+    marginBottom: 12,
+    letterSpacing: 0.5,
   },
   changePhoneButton: {
-    padding: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1,
+    borderColor: colors.primaryMid,
   },
   changePhoneText: {
-    color: '#0A6BFF',
-    fontSize: 14,
-    textDecorationLine: 'underline',
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: "600",
   },
+
   form: {
-    width: width * 0.85,
+    width: width * 0.88,
     alignItems: "center",
+    gap: 12,
   },
   input: {
     width: "100%",
-    backgroundColor: "#F6F8FA",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    backgroundColor: colors.surfaceInput,
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     fontSize: 15,
-    marginBottom: 12,
+    color: colors.text,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    letterSpacing: 0.1,
   },
+  inputFocused: {
+    borderColor: colors.borderFocus,
+    backgroundColor: colors.surface,
+  },
+
   passwordContainer: {
     width: "100%",
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F6F8FA",
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#F6F8FA",
+    backgroundColor: colors.surfaceInput,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+  },
+  passwordContainerFocused: {
+    borderColor: colors.borderFocus,
+    backgroundColor: colors.surface,
   },
   passwordInput: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     fontSize: 15,
+    color: colors.text,
   },
   eyeIcon: {
-    padding: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
   },
+
   button: {
     width: "100%",
-    backgroundColor: "#0A6BFF",
-    paddingVertical: 13,
-    borderRadius: 12,
+    backgroundColor: colors.primary,
+    paddingVertical: 15,
+    borderRadius: 14,
     alignItems: "center",
-    marginTop: 10,
+    marginTop: 8,
+    shadowColor: "#0A6BFF",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  buttonPressed: {
+    opacity: 0.88,
   },
   disabledButton: {
-    backgroundColor: "#ccc",
+    backgroundColor: colors.border,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   buttonText: {
-    color: "#fff",
+    color: "#FFFFFF",
     fontWeight: "700",
     fontSize: 16,
+    letterSpacing: 0.3,
   },
+  disabledButtonText: {
+    color: colors.textMuted,
+  },
+
   linkText: {
-    color: "#0A6BFF",
-    textDecorationLine: "underline",
+    color: colors.primary,
     fontSize: 14,
+    fontWeight: "600",
+    letterSpacing: 0.1,
+  },
+  fab: {
+    position: 'absolute',
+    bottom: 30,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#6200ee',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8, // Android shadow
+    shadowColor: '#000', // iOS shadow
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  fabText: {
+    color: '#fff',
+    fontSize: 30,
+    marginTop: -2,
   },
 });
