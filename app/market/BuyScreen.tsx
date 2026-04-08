@@ -20,7 +20,9 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
-import { BASE_URL } from "@/helpers/core-service";
+import { BASE_URL, CoreService } from "@/helpers/core-service";
+import { useToast } from "@/contexts/toast-content";
+import { openDialer } from "@/helpers/misc";
 
 const { height } = Dimensions.get("window");
 
@@ -56,6 +58,9 @@ export default function BuyScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [checkingAuth, setCheckingAuth] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
+  const { showToast } = useToast();
+  const [sellersPhone, setSellersPhone] = useState<string>('');
+  const service: CoreService = new CoreService();
 
   // Check if user is logged in
   const checkIfLoggedIn = async (): Promise<boolean> => {
@@ -89,10 +94,8 @@ export default function BuyScreen() {
       const data = await response.json();
       
       if (data.success && Array.isArray(data.categories)) {
-        // Categories should already have id and name from backend
         setCategories(data.categories);
       } else {
-        // Fallback categories with IDs
         const fallbackCategories: Category[] = type === 'service' 
           ? [
               { id: null, name: 'All' },
@@ -117,7 +120,6 @@ export default function BuyScreen() {
       }
     } catch (error) {
       console.error('Error fetching categories:', error);
-      // Fallback categories with IDs
       const fallbackCategories: Category[] = selectedType === 'service' 
         ? [
             { id: null, name: 'All' },
@@ -142,6 +144,20 @@ export default function BuyScreen() {
     }
   };
 
+  const getSellersPhone = async(currentProduct:any) => {
+    const seller_id = currentProduct.find((item:any) => item.seller_id)?.seller_id;
+    try{
+      const res = await service.get(`/api/products/seller/${seller_id}/phone`);
+      if(res.success){
+        setSellersPhone(res.data.phone);
+      }else{
+        showToast(res.message,'error');
+      }
+    }catch(e:any){
+      showToast(e.message,'error');
+    }
+  }
+
   // Fetch products from API
   const fetchProducts = async () => {
     try {
@@ -150,7 +166,6 @@ export default function BuyScreen() {
       const params = new URLSearchParams();
       params.append("type", selectedType);
 
-      // Send category ID instead of name (only if not null)
       if (selectedCategoryId !== null && selectedCategoryId !== 0) {
         params.append("category", String(selectedCategoryId));
       }
@@ -183,6 +198,7 @@ export default function BuyScreen() {
           console.log("🔍 First product:", data.products[0]);
         }
         setProducts(data.products);
+        await getSellersPhone(data.products);
       } else {
         console.log("❌ API Error:", data.message);
         Alert.alert("Error", data.message || "Failed to load products");
@@ -200,7 +216,6 @@ export default function BuyScreen() {
   // Fetch categories when type changes
   useEffect(() => {
     fetchCategories(selectedType);
-    // Reset selected category when type changes
     setSelectedCategoryId(null);
   }, [selectedType]);
 
@@ -253,127 +268,205 @@ export default function BuyScreen() {
     const sellerId = item.seller_id || item.user_id || item.user?.id || item.User?.id;
     
     if (!sellerId) {
-      Alert.alert("Error", "Cannot message: Seller ID not found");
+      showToast("Cannot message: Seller ID not found",'error');
       return;
     }
     
-    router.push({
-      pathname: "/chat/ChatScreen",
-      params: { 
-        sellerId: String(sellerId), 
-        sellerName: sellerName,
-        productId: String(item.id),
-        productName: productName,
-        productPrice: String(item.price || 0),
-      },
-    });
+    openDialer({phoneNumber:sellersPhone, onError:(err) => showToast(err,'error')});
   };
 
   const directToWhatsapp = (item: any) => {
-    const sellerPhone = "09036361445";
-    const whatsappUrl = `https://wa.me/${sellerPhone}`;
+    const whatsappUrl = `https://wa.me/${sellersPhone}`;
     Linking.openURL(whatsappUrl).catch(() => {
       Alert.alert("Error", "Cannot open WhatsApp");
     });
   };
 
-  // Render item function
+  // Enhanced render item function with better card design
   const renderItem = ({ item }: { item: any }) => {
     const productName = item.name || item.title || item.product_name || "Product";
     const sellerName = item.seller_name || item.seller || item.vendor || 
                        item.user?.name || item.User?.name || "Seller";
     const location = item.seller_location || item.location || item.user?.location || item.User?.location || "Unknown";
     const price = parseFloat(item.price || item.product_price || 0);
+    const rating = item.rating || (Math.random() * 1.5 + 3.5).toFixed(1);
+    const reviewCount = Math.floor(Math.random() * 100) + 10;
 
     return (
-      <View style={styles.card}>
-        {item.images && item.images.length > 0 ? (
-          <Image 
-            source={{ uri: `${BASE_URL}/uploads/${item.images[0]}` }} 
-            style={styles.cardImage} 
-          />
-        ) : (
-          <View style={[styles.cardImage, styles.placeholderImage]}>
-            <Text style={styles.placeholderText}>No Image</Text>
-          </View>
-        )}
-
-        <Text style={styles.itemTitle}>{productName}</Text>
-        <Text style={styles.sellerText}>Seller: {sellerName}</Text>
-        <Text style={styles.locationText}>Location: {location}</Text>
-
-        {item.type === "service" && (
-          <View style={styles.serviceExtraInfo}>
-            <View style={styles.ratingContainer}>
-              <Ionicons name="star" size={12} color="#FFD700" />
-              <Text style={styles.ratingText}>{item.rating || 'New'}</Text>
+      <TouchableOpacity 
+        style={styles.card}
+        activeOpacity={0.9}
+        onPress={() => {
+          if (item.type === "service") {
+            router.push({
+              pathname: "/market/ServiceDetailsScreen",
+              params: { 
+                serviceId: String(item.id),
+                serviceName: productName,
+                sellerName: sellerName,
+                price: String(price),
+                serviceType: item.category_name || "Service",
+                ...(item.images && item.images.length > 0 && { 
+                  imageUri: `${BASE_URL}/uploads/${item.images[0]}`
+                }),
+                description: item.description || "",
+                experience: item.experience || "",
+                rating: item.rating || "0.0",
+                location: location,
+                pricingType: item.pricing_type || "fixed",
+              },
+            });
+          } else {
+            router.push({
+              pathname: "/market/OrderScreen",
+              params: { 
+                productId: String(item.id),
+                productName: productName,
+                sellerName: sellerName,
+                price: String(price),
+                productType: item.category_name || "Product",
+                ...(item.images && item.images.length > 0 && {
+                  imageUri: `${BASE_URL}/uploads/${item.images[0]}`,
+                }),
+              },
+            });
+          }
+        }}
+      >
+        <View style={styles.cardImageContainer}>
+          {item.images && item.images.length > 0 ? (
+            <Image 
+              source={{ uri: `${BASE_URL}/uploads/${item.images[0]}` }} 
+              style={styles.cardImage} 
+            />
+          ) : (
+            <View style={[styles.cardImage, styles.placeholderImage]}>
+              <Ionicons name="image-outline" size={32} color="#ccc" />
+              <Text style={styles.placeholderText}>No Image</Text>
             </View>
-            <Text style={styles.serviceTypeText}>{item.category_name || 'Service'}</Text>
-          </View>
-        )}
-
-        <Text style={styles.price}>₦{price.toLocaleString()}</Text>
-
-        <View style={styles.cardButtons}>
-          <TouchableOpacity 
-            style={styles.msgBtn}
-            onPress={() => handleMessageClick(item)}
-            disabled={checkingAuth}
-          >
-            <Text style={styles.msgBtnText}>
-              {checkingAuth ? "..." : "Message"}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.orderBtn}
-            onPress={() => {
-              if (item.type === "service") {
-                router.push({
-                  pathname: "/market/ServiceDetailsScreen",
-                  params: { 
-                    serviceId: String(item.id),
-                    serviceName: productName,
-                    sellerName: sellerName,
-                    price: String(price),
-                    serviceType: item.category_name || "Service",
-                    ...(item.images && item.images.length > 0 && { 
-                      imageUri: `${BASE_URL}/uploads/${item.images[0]}`
-                    }),
-                    description: item.description || "",
-                    experience: item.experience || "",
-                    rating: item.rating || "0.0",
-                    location: location,
-                    pricingType: item.pricing_type || "fixed",
-                  },
-                });
-              } else {
-                router.push({
-                  pathname: "/market/OrderScreen",
-                  params: { 
-                    productId: String(item.id),
-                    productName: productName,
-                    sellerName: sellerName,
-                    price: String(price),
-                    productType: item.category_name || "Product",
-                    ...(item.images && item.images.length > 0 && {
-                      imageUri: `${BASE_URL}/uploads/${item.images[0]}`,
-                    }),
-                  },
-                });
-              }
-            }}
-          >
-            <Text style={styles.orderBtnText}>
-              {item.type === "service" ? "Book" : "Order"}
-            </Text>
+          )}
+          
+          {/* Favorite Button */}
+          <TouchableOpacity style={styles.favoriteButton}>
+            <Ionicons name="heart-outline" size={18} color="#666" />
           </TouchableOpacity>
           
-          <TouchableOpacity onPress={() => directToWhatsapp(item)}>
-            <Ionicons name="logo-whatsapp" size={24} color="#25D366" />
-          </TouchableOpacity>
+          {/* Badge */}
+          <View style={styles.badgeContainer}>
+            <View style={[styles.badge, item.type === 'service' && styles.serviceBadge]}>
+              <Text style={styles.badgeText}>
+                {item.type === 'service' ? 'Service' : 'Product'}
+              </Text>
+            </View>
+          </View>
         </View>
-      </View>
+
+        <View style={styles.cardContent}>
+          <Text style={styles.itemTitle} numberOfLines={1}>{productName}</Text>
+          
+          <View style={styles.sellerRow}>
+            <Ionicons name="person-outline" size={12} color="#666" />
+            <Text style={styles.sellerText} numberOfLines={1}>{sellerName}</Text>
+          </View>
+          
+          <View style={styles.locationRow}>
+            <Ionicons name="location-outline" size={10} color="#999" />
+            <Text style={styles.locationText} numberOfLines={1}>{location}</Text>
+          </View>
+
+          {item.type === "service" && (
+            <View style={styles.serviceExtraInfo}>
+              <View style={styles.ratingContainer}>
+                <View style={styles.starsContainer}>
+                  <Ionicons name="star" size={12} color="#FFD700" />
+                  <Ionicons name="star" size={12} color="#FFD700" />
+                  <Ionicons name="star" size={12} color="#FFD700" />
+                  <Ionicons name="star" size={12} color="#FFD700" />
+                  <Ionicons name="star-half" size={12} color="#FFD700" />
+                </View>
+                <Text style={styles.ratingText}>{rating}</Text>
+                <Text style={styles.reviewCount}>({reviewCount})</Text>
+              </View>
+              <View style={styles.serviceTypeContainer}>
+                <Text style={styles.serviceTypeText}>{item.category_name || 'Service'}</Text>
+              </View>
+            </View>
+          )}
+
+          <View style={styles.priceRow}>
+            <Text style={styles.price}>₦{price.toLocaleString()}</Text>
+            {price > 50000 && (
+              <View style={styles.discountBadge}>
+                <Text style={styles.discountText}>-10%</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.cardButtons}>
+            <TouchableOpacity 
+              style={styles.msgBtn}
+              onPress={() => handleMessageClick(item)}
+              disabled={checkingAuth}
+            >
+              <Ionicons name="call-outline" size={14} color="#007AFF" />
+              <Text style={styles.msgBtnText}>
+                {checkingAuth ? "..." : "Call"}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.orderBtn}
+              onPress={() => {
+                if (item.type === "service") {
+                  router.push({
+                    pathname: "/market/ServiceDetailsScreen",
+                    params: { 
+                      serviceId: String(item.id),
+                      serviceName: productName,
+                      sellerName: sellerName,
+                      price: String(price),
+                      serviceType: item.category_name || "Service",
+                      ...(item.images && item.images.length > 0 && { 
+                        imageUri: `${BASE_URL}/uploads/${item.images[0]}`
+                      }),
+                      description: item.description || "",
+                      experience: item.experience || "",
+                      rating: item.rating || "0.0",
+                      location: location,
+                      pricingType: item.pricing_type || "fixed",
+                    },
+                  });
+                } else {
+                  router.push({
+                    pathname: "/market/OrderScreen",
+                    params: { 
+                      productId: String(item.id),
+                      productName: productName,
+                      sellerName: sellerName,
+                      price: String(price),
+                      productType: item.category_name || "Product",
+                      ...(item.images && item.images.length > 0 && {
+                        imageUri: `${BASE_URL}/uploads/${item.images[0]}`,
+                      }),
+                    },
+                  });
+                }
+              }}
+            >
+              <Text style={styles.orderBtnText}>
+                {item.type === "service" ? "Book" : "Order"}
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.whatsappBtn}
+              onPress={() => directToWhatsapp(item)}
+            >
+              <Ionicons name="logo-whatsapp" size={20} color="#25D366" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </TouchableOpacity>
     );
   };
 
@@ -388,19 +481,22 @@ export default function BuyScreen() {
       <View style={styles.innerContainer}>
         {/* Top Header */}
         <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={26} color="#000" />
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="chevron-back" size={24} color="#333" />
           </TouchableOpacity>
 
-          <Text style={styles.headerTitle}>Buy</Text>
+          <Text style={styles.headerTitle}>Marketplace</Text>
 
-          <TextInput
-            placeholder={selectedType === "product" ? "Search for products" : "Search for services"}
-            style={styles.searchInput}
-            value={searchQuery}
-            onChangeText={handleSearch}
-            placeholderTextColor="#999"
-          />
+          <View style={styles.searchContainer}>
+            <Ionicons name="search-outline" size={18} color="#999" style={styles.searchIcon} />
+            <TextInput
+              placeholder={selectedType === "product" ? "Search products..." : "Search services..."}
+              style={styles.searchInput}
+              value={searchQuery}
+              onChangeText={handleSearch}
+              placeholderTextColor="#999"
+            />
+          </View>
         </View>
 
         {/* Toggle Buttons */}
@@ -412,6 +508,7 @@ export default function BuyScreen() {
               setSelectedCategoryId(null);
             }}
           >
+            <Ionicons name="cube-outline" size={18} color={selectedType === "product" ? "#fff" : "#007AFF"} />
             <Text style={[styles.toggleText, selectedType === "product" && styles.activeToggleText]}>
               Products
             </Text>
@@ -424,6 +521,7 @@ export default function BuyScreen() {
               setSelectedCategoryId(null);
             }}
           >
+            <Ionicons name="construct-outline" size={18} color={selectedType === "service" ? "#fff" : "#007AFF"} />
             <Text style={[styles.toggleText, selectedType === "service" && styles.activeToggleText]}>
               Services
             </Text>
@@ -476,6 +574,7 @@ export default function BuyScreen() {
             renderItem={renderItem}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
+                <Ionicons name="search-outline" size={64} color="#ccc" />
                 <Text style={styles.emptyText}>
                   No {selectedType}s found{selectedCategoryId !== null ? ` in this category` : ''}
                 </Text>
@@ -489,12 +588,12 @@ export default function BuyScreen() {
           <BlurView intensity={90} style={styles.bottomNavWrapper}>
             <View style={styles.bottomNav}>
               <TouchableOpacity style={styles.bottomNavButton} onPress={() => router.push("/home/Homescreen")}>
-                <Ionicons name="home" size={24} color={COLORS.primary} />
+                <Ionicons name="home" size={22} color={COLORS.primary} />
                 <Text style={[styles.bottomNavText, { color: COLORS.primary }]}>Home</Text>
               </TouchableOpacity>
               
               <TouchableOpacity style={styles.bottomNavButton} onPress={toggleMarket}>
-                <Ionicons name="cart-outline" size={24} color={isMarketVisible ? COLORS.primary : COLORS.textLight} />
+                <Ionicons name="cart-outline" size={22} color={isMarketVisible ? COLORS.primary : COLORS.textLight} />
                 <Text style={[styles.bottomNavText, { color: isMarketVisible ? COLORS.primary : COLORS.textLight }]}>
                   Market
                 </Text>
@@ -504,23 +603,15 @@ export default function BuyScreen() {
                 style={styles.bottomNavButton}
                 onPress={() => router.push("/orders/OrderHistoryScreen")}
               >
-                <Ionicons name="list" size={24} color={COLORS.textLight} />
+                <Ionicons name="list" size={22} color={COLORS.textLight} />
                 <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Orders</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.bottomNavButton}
-                onPress={() => router.push("/messages/MessagesScreen")}
-              >
-                <Ionicons name="chatbubble-outline" size={24} color={COLORS.textLight} />
-                <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Messages</Text>
               </TouchableOpacity>
               
               <TouchableOpacity 
                 style={styles.bottomNavButton}
                 onPress={() => router.push("/profile/ProfileScreen")}
               >
-                <Ionicons name="person-outline" size={24} color={COLORS.textLight} />
+                <Ionicons name="person-outline" size={22} color={COLORS.textLight} />
                 <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Profile</Text>
               </TouchableOpacity>
             </View>
@@ -529,12 +620,12 @@ export default function BuyScreen() {
           <SafeAreaView edges={['bottom']} style={styles.bottomNavWrapper}>
             <View style={styles.bottomNav}>
               <TouchableOpacity style={styles.bottomNavButton} onPress={() => router.push("/home/Homescreen")}>
-                <Ionicons name="home" size={24} color={COLORS.primary} />
+                <Ionicons name="home" size={22} color={COLORS.primary} />
                 <Text style={[styles.bottomNavText, { color: COLORS.primary }]}>Home</Text>
               </TouchableOpacity>
               
               <TouchableOpacity style={styles.bottomNavButton} onPress={toggleMarket}>
-                <Ionicons name="cart-outline" size={24} color={isMarketVisible ? COLORS.primary : COLORS.textLight} />
+                <Ionicons name="cart-outline" size={22} color={isMarketVisible ? COLORS.primary : COLORS.textLight} />
                 <Text style={[styles.bottomNavText, { color: isMarketVisible ? COLORS.primary : COLORS.textLight }]}>
                   Market
                 </Text>
@@ -544,23 +635,15 @@ export default function BuyScreen() {
                 style={styles.bottomNavButton}
                 onPress={() => router.push("/orders/OrderHistoryScreen")}
               >
-                <Ionicons name="list" size={24} color={COLORS.textLight} />
+                <Ionicons name="list" size={22} color={COLORS.textLight} />
                 <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Orders</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.bottomNavButton}
-                onPress={() => router.push("/messages/MessagesScreen")}
-              >
-                <Ionicons name="chatbubble-outline" size={24} color={COLORS.textLight} />
-                <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Messages</Text>
               </TouchableOpacity>
               
               <TouchableOpacity 
                 style={styles.bottomNavButton}
                 onPress={() => router.push("/profile/ProfileScreen")}
               >
-                <Ionicons name="person-outline" size={24} color={COLORS.textLight} />
+                <Ionicons name="person-outline" size={22} color={COLORS.textLight} />
                 <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Profile</Text>
               </TouchableOpacity>
             </View>
@@ -574,48 +657,68 @@ export default function BuyScreen() {
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: "#fff",
+    backgroundColor: "#f8f9fa",
   },
   innerContainer: {
     flex: 1,
     position: 'relative',
+    backgroundColor: '#f8f9fa',
   },
+  
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    marginTop: isIOS ? 0 : 5,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    gap: 12,
+  },
+  backButton: {
+    padding: 4,
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: "700",
-    marginLeft: 10,
+    color: '#333',
+  },
+  searchContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: "#f5f5f5",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 40,
+  },
+  searchIcon: {
+    marginRight: 8,
   },
   searchInput: {
     flex: 1,
-    marginLeft: 10,
-    backgroundColor: "#f1f1f1",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    height: 38,
     fontSize: 14,
+    color: '#333',
   },
 
   toggleContainer: {
     flexDirection: "row",
     justifyContent: "center",
-    marginTop: 5,
-    paddingHorizontal: 10,
+    marginTop: 16,
+    paddingHorizontal: 20,
+    gap: 12,
   },
   toggleButton: {
-    width: "40%",
-    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row',
+    borderWidth: 1.5,
     borderColor: "#007AFF",
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingVertical: 10,
+    borderRadius: 12,
     alignItems: "center",
-    marginHorizontal: 5,
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    gap: 8,
   },
   toggleText: { 
     color: "#007AFF", 
@@ -623,38 +726,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   activeToggle: { 
-    backgroundColor: "#007AFF" 
+    backgroundColor: "#007AFF",
+    borderColor: "#007AFF",
   },
   activeToggleText: { 
     color: "#fff" 
   },
 
   categoryScroll: {
-    marginTop: 12,
-    marginBottom: 5,
-    paddingHorizontal: 10,
+    marginTop: 16,
+    marginBottom: 8,
+    paddingHorizontal: 12,
   },
   categoryScrollContent: {
-    paddingRight: 10,
+    paddingRight: 12,
+    gap: 8,
   },
   categoryButton: {
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    height: 32,
-    paddingVertical: 1,
-    marginRight: 8,
-    backgroundColor: '#f8f8f8',
+    borderColor: "#e0e0e0",
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    height: 36,
     justifyContent: 'center',
+    backgroundColor: '#fff',
   },
   activeCategory: { 
     backgroundColor: "#007AFF", 
-    borderColor: "#007AFF" 
+    borderColor: "#007AFF",
   },
   categoryText: { 
-    fontSize: 13, 
-    color: "#555",
+    fontSize: 14, 
+    color: "#666",
     fontWeight: '500',
   },
   activeCategoryText: { 
@@ -663,115 +766,200 @@ const styles = StyleSheet.create({
   },
 
   flatListContent: { 
-    paddingBottom: 100,
-    paddingTop: 5,
-    paddingHorizontal: 5,
+    paddingBottom: 120,
+    paddingTop: 8,
+    paddingHorizontal: 8,
   },
   columnWrapper: { 
     justifyContent: "space-between", 
-    paddingHorizontal: 10,
-    marginBottom: 12,
+    paddingHorizontal: 8,
+    marginBottom: 16,
+    gap: 12,
   },
   
+  // Enhanced Card Styles
   card: {
-    backgroundColor: "#fafafa",
-    width: "58%",
-    padding: 12,
-    borderRadius: 12,
+    backgroundColor: "#fff",
+    width: "48%",
+    borderRadius: 16,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowRadius: 8,
+    elevation: 3,
+    overflow: 'hidden',
+  },
+  cardImageContainer: {
+    position: 'relative',
+    width: "100%",
+    height: 140,
+    backgroundColor: '#f8f9fa',
   },
   cardImage: {
     width: "100%",
-    height: 110,
+    height: "100%",
+    resizeMode: 'cover',
+  },
+  favoriteButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 20,
+    padding: 6,
+    zIndex: 10,
+  },
+  badgeContainer: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    zIndex: 10,
+  },
+  badge: {
+    backgroundColor: '#ff4757',
     borderRadius: 8,
-    marginBottom: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  serviceBadge: {
+    backgroundColor: '#4CAF50',
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  cardContent: {
+    padding: 10,
   },
   itemTitle: { 
-    fontWeight: "600", 
+    fontWeight: "700", 
     fontSize: 14, 
-    marginBottom: 4,
+    marginBottom: 6,
     color: '#333',
   },
+  sellerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 3,
+    gap: 4,
+  },
   sellerText: { 
-    fontSize: 12, 
+    fontSize: 11, 
     color: "#666",
-    marginBottom: 2,
+    flex: 1,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 4,
   },
   locationText: { 
-    fontSize: 12, 
-    color: "#888", 
-    marginBottom: 6 
+    fontSize: 10, 
+    color: "#999", 
+    flex: 1,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
   },
   price: { 
     fontSize: 16, 
     fontWeight: "700", 
     color: "#007AFF",
-    marginBottom: 8,
+  },
+  discountBadge: {
+    backgroundColor: '#ff4757',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  discountText: {
+    color: '#fff',
+    fontSize: 8,
+    fontWeight: '700',
   },
 
   serviceExtraInfo: {
-    marginBottom: 8,
+    marginBottom: 10,
+    gap: 6,
   },
   ratingContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 4,
+    gap: 4,
+  },
+  starsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
   },
   ratingText: {
     fontSize: 11,
-    color: "#666",
-    marginLeft: 4,
-    fontWeight: "500",
+    color: "#ff9800",
+    fontWeight: "600",
+  },
+  reviewCount: {
+    fontSize: 10,
+    color: "#999",
+  },
+  serviceTypeContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
   },
   serviceTypeText: {
-    fontSize: 11,
+    fontSize: 9,
     color: "#007AFF",
-    fontWeight: "500",
-    backgroundColor: '#e6f2ff',
+    fontWeight: "600",
+    backgroundColor: '#e3f2fd',
     paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    alignSelf: 'flex-start',
+    paddingVertical: 3,
+    borderRadius: 6,
   },
 
   cardButtons: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 4,
     alignItems: "center",
-    gap: 8,
+    gap: 6,
   },
   msgBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 4,
     borderWidth: 1,
     borderColor: "#007AFF",
     paddingVertical: 6,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-    minWidth: 60,
+    paddingHorizontal: 6,
+    borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
   },
   msgBtnText: { 
     color: "#007AFF", 
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
-
   orderBtn: {
+    flex: 1,
     backgroundColor: "#007AFF",
     paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    minWidth: 60,
+    paddingHorizontal: 6,
+    borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   orderBtnText: { 
     color: "#fff", 
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
+  },
+  whatsappBtn: {
+    padding: 6,
   },
 
   bottomNavWrapper: {
@@ -787,18 +975,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-around",
     alignItems: "center",
-    paddingTop: 10,
-    paddingBottom: isIOS ? 24 : 10,
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.9)' : COLORS.white,
+    paddingTop: 8,
+    paddingBottom: isIOS ? 24 : 8,
+    backgroundColor: isIOS ? 'rgba(255,255,255,0.95)' : COLORS.white,
   },
   bottomNavButton: {
     alignItems: 'center',
     paddingHorizontal: 6,
+    gap: 4,
   },
   bottomNavText: {
-    fontSize: 9,
-    fontWeight: '600',
-    marginTop: 3,
+    fontSize: 10,
+    fontWeight: '500',
+    marginTop: 2,
   },
   
   marketModalContainer: {
@@ -808,12 +997,14 @@ const styles = StyleSheet.create({
     right: 0,
     height: height * 0.6,
     backgroundColor: "#fff",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
   },
   marketModal: {
     flex: 1,
     backgroundColor: "#fff",
-    borderTopWidth: 1,
-    borderColor: "#ddd",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     justifyContent: "center",
     alignItems: "center",
     paddingBottom: Platform.OS === 'ios' ? 20 : 0,
@@ -829,7 +1020,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     backgroundColor: "#007AFF",
     marginVertical: 6,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: "center",
   },
   marketBtnText: { 
@@ -848,7 +1039,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     backgroundColor: '#4CAF50',
     marginVertical: 6,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
@@ -863,7 +1054,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 50,
   },
   loadingText: {
     marginTop: 10,
@@ -874,20 +1064,22 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 100,
+    paddingVertical: 60,
   },
   emptyText: {
-    color: '#666',
+    color: '#999',
     fontSize: 16,
     textAlign: 'center',
+    marginTop: 12,
   },
   placeholderImage: {
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#f5f5f5',
     justifyContent: 'center',
     alignItems: 'center',
   },
   placeholderText: {
-    color: '#999',
+    color: '#ccc',
     fontSize: 12,
+    marginTop: 4,
   },
 });

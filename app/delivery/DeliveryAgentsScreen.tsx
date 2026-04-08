@@ -15,6 +15,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BASE_URL } from "@/helpers/core-service";
+import { openDialer } from "@/helpers/misc";
+import { useToast } from "@/contexts/toast-content";
 
 const { width } = Dimensions.get("window");
 const isIOS = Platform.OS === 'ios';
@@ -53,6 +55,7 @@ export default function DeliveryAgentsScreen() {
   const [loading, setLoading] = useState(true);
   const [checkingAuth, setCheckingAuth] = useState(false);
   const [selectedState, setSelectedState] = useState<string>("All States");
+  const {showToast} = useToast();
 
   // Get optional orderId from params if coming from order
   const orderId = params.orderId as string;
@@ -191,16 +194,18 @@ export default function DeliveryAgentsScreen() {
     }
     
     // User is logged in, proceed to chat
-    router.push({
-      pathname: "/chat/ChatScreen",
-      params: { 
-        sellerId: agent.user_id, 
-        sellerName: agent.company_name,
-        isDeliveryAgent: "true",
-        productName: productName || "Delivery Request",
-        orderId: orderId || "",
-      },
-    });
+    // router.push({
+    //   pathname: "/chat/ChatScreen",
+    //   params: { 
+    //     sellerId: agent.user_id, 
+    //     sellerName: agent.company_name,
+    //     isDeliveryAgent: "true",
+    //     productName: productName || "Delivery Request",
+    //     orderId: orderId || "",
+    //   },
+    // });
+    if(agent.phone_number)
+    openDialer({phoneNumber: agent.phone_number, onError:(err) => showToast(err,'error')})
   };
 
   // Handle request delivery button click - NO ORDER ID REQUIRED
@@ -386,9 +391,9 @@ export default function DeliveryAgentsScreen() {
             disabled={checkingAuth}
           >
             <View style={styles.buttonContent}>
-              <Ionicons name="chatbubble-outline" size={14} color="#007AFF" />
+              <Ionicons name="call" size={14} color="#007AFF" />
               <Text style={styles.messageButtonText} numberOfLines={1}>
-                {checkingAuth ? "..." : "Message"}
+                {checkingAuth ? "..." : "Call"}
               </Text>
             </View>
           </TouchableOpacity>

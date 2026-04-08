@@ -530,13 +530,13 @@ export default function HomeScreen() {
                   <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Orders</Text>
                 </TouchableOpacity>
                 
-                <TouchableOpacity 
+                {/* <TouchableOpacity 
                   style={styles.bottomNavButton}
                   onPress={() => router.push("/messages/MessagesScreen")}
                 >
                   <Ionicons name="chatbubble-outline" size={24} color={COLORS.textLight} />
                   <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Messages</Text>
-                </TouchableOpacity>
+                </TouchableOpacity> */}
                 
                 <TouchableOpacity 
                   style={styles.bottomNavButton}
@@ -570,13 +570,13 @@ export default function HomeScreen() {
                   <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Orders</Text>
                 </TouchableOpacity>
                 
-                <TouchableOpacity 
+                {/* <TouchableOpacity 
                   style={styles.bottomNavButton}
                   onPress={() => router.push("/messages/MessagesScreen")}
                 >
                   <Ionicons name="chatbubble-outline" size={24} color={COLORS.textLight} />
                   <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Messages</Text>
-                </TouchableOpacity>
+                </TouchableOpacity> */}
                 
                 <TouchableOpacity 
                   style={styles.bottomNavButton}
