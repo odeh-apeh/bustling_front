@@ -470,6 +470,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f1f1f1',
     borderRadius: 20,
     marginRight: 8,
+    height:35
   },
   filterButtonActive: {
     backgroundColor: '#0A6BFF',
@@ -483,7 +484,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   scrollView: {
-    flex: 1,
+    
   },
   scrollContent: {
     padding: 16,

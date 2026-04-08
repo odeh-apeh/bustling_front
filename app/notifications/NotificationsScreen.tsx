@@ -12,11 +12,13 @@ import {
   RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { BASE_URL } from "@/helpers/core-service";
+import { BASE_URL, CoreService } from "@/helpers/core-service";
+import { useToast } from "@/contexts/toast-content";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const { height } = Dimensions.get("window");
 
-type Notification = {
+export type Notification = {
   id: number;
   user_id: number;
   message: string;
@@ -30,24 +32,29 @@ export default function NotificationsScreen() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const {showToast} = useToast();
+  const service:CoreService = new CoreService();
+  const [userId, setUserId] = useState<number | null>(null);  
+
+  const fetchUserId = async () => {
+    try {
+      const userId = await AsyncStorage.getItem('user_id');
+      if (userId) {
+        setUserId(parseInt(userId));
+      }
+    } catch (e: any) {
+      showToast("Unable to get user info", 'error');
+    }
+  }
 
   // Fetch notifications from backend
   const fetchNotifications = async () => {
     try {
-      const response = await fetch(`${BASE_URL}/api/notifications`, {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      const data = await response.json();
-      
-      if (data.success) {
-        setNotifications(data.notifications || []);
+       const res = await service.send('/api/notifications/get-notifications', { userId:userId });
+      if (res.success && Array.isArray(res.data)) {
+        setNotifications(res.data || []);
       } else {
-        Alert.alert("Error", data.message || "Failed to load notifications");
+        Alert.alert("Error", res.message || "Failed to load notifications");
       }
     } catch (error) {
       console.error('❌ Error fetching notifications:', error);
@@ -59,8 +66,12 @@ export default function NotificationsScreen() {
   };
 
   useEffect(() => {
-    fetchNotifications();
+    fetchUserId();
   }, []);
+
+  useEffect(() => {
+    fetchNotifications();
+  },[userId]);
 
   const onRefresh = () => {
     setRefreshing(true);

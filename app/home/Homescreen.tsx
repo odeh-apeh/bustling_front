@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, use } from "react";
 import { Stack, useRouter } from "expo-router";
 import {
   View,
@@ -15,7 +15,8 @@ import {
 import { Ionicons, Feather, MaterialIcons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
-import { BASE_URL } from "@/helpers/core-service";
+import { BASE_URL, CoreService } from "@/helpers/core-service";
+import { useToast } from "@/contexts/toast-content";
 
 const { width, height } = Dimensions.get("window");
 
@@ -94,6 +95,9 @@ export default function HomeScreen() {
   const [isMarketVisible, setMarketVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const service:CoreService = new CoreService();
+  const {showToast} = useToast();
 
   // Fetch user profile
   const fetchUserProfile = async () => {
@@ -110,6 +114,8 @@ export default function HomeScreen() {
         'Cache-Control': 'no-cache'
       }
     });
+
+    
     
     console.log("Balance response status:", balanceResponse.status);
     console.log("Balance response headers:", balanceResponse.headers);
@@ -175,10 +181,28 @@ export default function HomeScreen() {
     console.log("Profile fetch completed");
   }
 };
-
+  
+    const fetchNotifications = async() => {
+          try{
+            const res = await service.send(`/api/notifications/get-notifications`,{userId:user?.user.id});
+            if(res.success && Array.isArray(res.data)){
+              setNotifications(res.data);
+              console.log("Fetched notifications:", res.data);
+            }
+          }catch(e:any){
+            showToast("Unable to get notifications", 'error');
+          }
+        }
+  
   useEffect(() => {
     fetchUserProfile();
   }, []);
+
+  useEffect(() => {
+    if(user){
+      fetchNotifications();
+    }
+  }, [user]);
 
   // Auto scroll for about section
   useEffect(() => {
@@ -223,10 +247,10 @@ export default function HomeScreen() {
       });
       
       setUser(null);
-      Alert.alert("Success", "Logged out successfully");
+      showToast("Logged out successfully");
       router.replace("/login/LoginScreen");
-    } catch (error) {
-      console.error('Logout error:', error);
+    } catch (error:any) {
+      showToast(error.message,'error');
     }
   };
 
@@ -275,9 +299,9 @@ export default function HomeScreen() {
                 onPress={() => router.push("/notifications/NotificationsScreen")}
               >
                 <Ionicons name="notifications-outline" size={22} color={COLORS.text} />
-                <View style={styles.notificationBadge}>
-                  <Text style={styles.badgeText}>3</Text>
-                </View>
+                {notifications.length > 0 && <View style={styles.notificationBadge}>
+                  <Text style={styles.badgeText}>{notifications.length > 0 ? notifications.length : ''}</Text>
+                </View>}
               </TouchableOpacity>
               
               <TouchableOpacity 

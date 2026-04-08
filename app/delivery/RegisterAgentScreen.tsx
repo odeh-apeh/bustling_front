@@ -16,6 +16,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BASE_URL } from "@/helpers/core-service";
+import { useToast } from "@/contexts/toast-content";
 
 const { height } = Dimensions.get("window");
 
@@ -49,6 +50,7 @@ export default function RegisterAgentScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showStateDropdown, setShowStateDropdown] = useState(false);
   const [stateSearchQuery, setStateSearchQuery] = useState("");
+  const {showToast} = useToast();
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -66,8 +68,8 @@ export default function RegisterAgentScreen() {
   const handleSubmit = async () => {
     // Validate form
     if (!formData.companyName || !formData.phoneNumber || !formData.state || 
-        !formData.localGovernment || !formData.vehicleType || formData.deliveryTypes.length === 0) {
-      Alert.alert("Missing Information", "Please fill in all required fields");
+        !formData.localGovernment) {
+      showToast("Please fill in all required fields",'error');
       return;
     }
 
@@ -309,7 +311,7 @@ export default function RegisterAgentScreen() {
             <Text style={styles.sectionTitle}>Vehicle & Service Information</Text>
             
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Vehicle Type *</Text>
+              <Text style={styles.label}>Vehicle Type (optional)</Text>
               <View style={styles.vehicleGrid}>
                 {vehicleTypes.map((type) => (
                   <TouchableOpacity
@@ -332,7 +334,7 @@ export default function RegisterAgentScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Delivery Coverage *</Text>
+              <Text style={styles.label}>Delivery Coverage (optional)</Text>
               <View style={styles.deliveryTypes}>
                 <TouchableOpacity
                   style={[

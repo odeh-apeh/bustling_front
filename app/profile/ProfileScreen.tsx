@@ -162,12 +162,12 @@ export default function ProfileScreen() {
       icon: "cube-outline",
       screen: "/orders/OrderHistoryScreen",
     },
-    {
-      title: "My Bookings", 
-      subtitle: "Manage your service bookings",
-      icon: "calendar-outline",
-      screen: "/bookings/BookingHistoryScreen",
-    },
+    // {
+    //   title: "My Bookings", 
+    //   subtitle: "Manage your service bookings",
+    //   icon: "calendar-outline",
+    //   screen: "/bookings/BookingHistoryScreen",
+    // },
     {
       title: "My Products",
       subtitle: "Manage your product listings",
@@ -180,18 +180,18 @@ export default function ProfileScreen() {
       icon: "construct-outline",
       screen: "/market/SellScreen",
     },
-    {
-      title: "Wishlist",
-      subtitle: "Your saved items",
-      icon: "heart-outline",
-      screen: "/wishlist/WishlistScreen",
-    },
-    {
-      title: "Addresses",
-      subtitle: "Manage your addresses",
-      icon: "location-outline",
-      screen: "/profile/AddressScreen",
-    },
+    // {
+    //   title: "Wishlist",
+    //   subtitle: "Your saved items",
+    //   icon: "heart-outline",
+    //   screen: "/wishlist/WishlistScreen",
+    // },
+    // {
+    //   title: "Addresses",
+    //   subtitle: "Manage your addresses",
+    //   icon: "location-outline",
+    //   screen: "/profile/AddressScreen",
+    // },
   ];
 
   const supportItems = [
@@ -207,12 +207,12 @@ export default function ProfileScreen() {
     //   icon: "shield-checkmark-outline",
     //   screen: "/support/TrustSafetyScreen",
     // },
-    {
-      title: "Change Password",
-      subtitle: "Update your password",
-      icon: "lock-closed-outline",
-      screen: "/profile/ChangePasswordScreen",
-    },
+    // {
+    //   title: "Change Password",
+    //   subtitle: "Update your password",
+    //   icon: "lock-closed-outline",
+    //   screen: "/profile/ChangePasswordScreen",
+    // },
     {
       title: "Customer Support",
       subtitle: "Get help with your account",
