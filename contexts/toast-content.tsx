@@ -3,12 +3,18 @@ import { ModernToast, ToastType } from '@/components/toast';
 
 interface ToastContextType {
   showToast: (message: string, type?: ToastType) => void;
+  isMarketVisible: boolean,
+  setMarketVisible: (val: boolean) => void;
 }
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
 export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' as ToastType });
+  const [isMarketVisible, setMarketVisible] = useState(false);
+  
+
+  
 
   const showToast = useCallback((message: string, type: ToastType = 'success') => {
     setToast({ visible: true, message, type });
@@ -19,7 +25,12 @@ export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   return (
-    <ToastContext.Provider value={{ showToast }}>
+    <ToastContext.Provider value={{ 
+      showToast, 
+      isMarketVisible,
+      setMarketVisible,
+    }}>
+
       {children}
       <ModernToast
         visible={toast.visible}

@@ -18,6 +18,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BASE_URL } from "@/helpers/core-service";
+import { useToast } from "@/contexts/toast-content";
 
 const { width } = Dimensions.get("window");
 
@@ -52,6 +53,7 @@ export default function SellerScreen() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const {showToast, setMarketVisible} = useToast();
 
   // Fetch seller's products
  const fetchMyProducts = async () => {
@@ -316,7 +318,11 @@ useEffect(() => {
       <View style={styles.innerContainer}>
         {/* Header */}
         <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => 
+            {
+              router.back();
+              setMarketVisible(true);
+          }}>
             <Ionicons name="chevron-back" size={26} color="#000" />
           </TouchableOpacity>
 

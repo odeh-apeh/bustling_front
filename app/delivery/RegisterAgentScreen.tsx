@@ -108,11 +108,11 @@ export default function RegisterAgentScreen() {
           ]
         );
       } else {
-        Alert.alert("Registration Failed", data.message || "Something went wrong");
+        showToast( data.message || "Something went wrong",'error');
       }
     } catch (error) {
       console.error('Registration error:', error);
-      Alert.alert("Network Error", "Failed to connect to server. Please try again.");
+      showToast("Failed to connect to server. Please try again.",'error');
     } finally {
       setIsSubmitting(false);
     }

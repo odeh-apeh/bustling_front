@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -55,7 +56,7 @@ export default function DeliveryAgentsScreen() {
   const [loading, setLoading] = useState(true);
   const [checkingAuth, setCheckingAuth] = useState(false);
   const [selectedState, setSelectedState] = useState<string>("All States");
-  const {showToast} = useToast();
+  const {showToast, setMarketVisible} = useToast();
 
   // Get optional orderId from params if coming from order
   const orderId = params.orderId as string;
@@ -314,6 +315,14 @@ export default function DeliveryAgentsScreen() {
     ).length;
   };
 
+  const directToWhatsapp = (phone: string) => {
+      const whatsappUrl = `https://wa.me/${phone}`;
+      Linking.openURL(whatsappUrl).catch(() => {
+        Alert.alert("Error", "Cannot open WhatsApp");
+      });
+    };
+  
+
   const renderAgentItem = (agent: DeliveryAgent) => (
     <View style={styles.agentCard}>
       {/* Company Logo Placeholder */}
@@ -409,6 +418,26 @@ export default function DeliveryAgentsScreen() {
               </Text>
             </View>
           </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={{
+              display:'flex',
+              justifyContent:'center',
+              alignItems:'center',
+              borderWidth:1,
+              borderColor:'#007AFF',
+              borderRadius:6,
+              paddingVertical:8,
+              paddingHorizontal:10,
+            }}
+            onPress={() => directToWhatsapp(agent.phone_number || '')}
+          >
+            <View style={styles.buttonContent}>
+              <Ionicons name='logo-whatsapp' size={19} color={'green'} />
+            </View>
+          </TouchableOpacity>
+
+          
         </View>
       </View>
     </View>
@@ -450,7 +479,11 @@ export default function DeliveryAgentsScreen() {
       <View style={styles.innerContainer}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={() => 
+          {
+            router.back();
+            setMarketVisible(true);
+          }} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color="#000" />
             <Text style={styles.backText}></Text>
           </TouchableOpacity>

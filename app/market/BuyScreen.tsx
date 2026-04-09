@@ -51,14 +51,14 @@ export default function BuyScreen() {
   const router = useRouter();
   const [selectedType, setSelectedType] = useState<"product" | "service">("product");
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
-  const [isMarketVisible, setMarketVisible] = useState(false);
+  //const [isMarketVisible, setMarketVisible] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [checkingAuth, setCheckingAuth] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
-  const { showToast } = useToast();
+  const { showToast, setMarketVisible, isMarketVisible } = useToast();
   const [sellersPhone, setSellersPhone] = useState<string>('');
   const service: CoreService = new CoreService();
 
@@ -146,12 +146,15 @@ export default function BuyScreen() {
 
   const getSellersPhone = async(currentProduct:any) => {
     const seller_id = currentProduct.find((item:any) => item.seller_id)?.seller_id;
+    if(!seller_id){
+      return;
+    }
     try{
       const res = await service.get(`/api/products/seller/${seller_id}/phone`);
       if(res.success){
         setSellersPhone(res.data.phone);
       }else{
-        showToast(res.message,'error');
+        //showToast(res.message,'error');
       }
     }catch(e:any){
       showToast(e.message,'error');
@@ -459,10 +462,10 @@ export default function BuyScreen() {
             </TouchableOpacity>
             
             <TouchableOpacity 
-              style={styles.whatsappBtn}
+              style={styles.msgBtn}
               onPress={() => directToWhatsapp(item)}
             >
-              <Ionicons name="logo-whatsapp" size={20} color="#25D366" />
+              <Ionicons name="logo-whatsapp" size={16} color="#25D366" />
             </TouchableOpacity>
           </View>
         </View>
@@ -481,7 +484,12 @@ export default function BuyScreen() {
       <View style={styles.innerContainer}>
         {/* Top Header */}
         <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={() => 
+            {
+              router.back();
+              setMarketVisible(true);
+              
+          }} style={styles.backButton}>
             <Ionicons name="chevron-back" size={24} color="#333" />
           </TouchableOpacity>
 

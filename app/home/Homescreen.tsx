@@ -92,12 +92,11 @@ export default function HomeScreen() {
   
   const scrollX = useRef(new Animated.Value(0)).current;
   const scrollRef = useRef<ScrollView>(null);
-  const [isMarketVisible, setMarketVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const [currentIndex, setCurrentIndex] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const service:CoreService = new CoreService();
-  const {showToast} = useToast();
+  const {showToast, isMarketVisible, setMarketVisible} = useToast();
 
   // Fetch user profile
   const fetchUserProfile = async () => {
@@ -193,6 +192,19 @@ export default function HomeScreen() {
             showToast("Unable to get notifications", 'error');
           }
         }
+
+    // Reset animation when modal becomes visible
+useEffect(() => {
+  if (isMarketVisible) {
+    slideAnim.setValue(0);
+    Animated.timing(slideAnim, {
+      toValue: 1,
+      duration: 400,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: true,
+    }).start();
+  }
+}, [isMarketVisible]);
   
   useEffect(() => {
     fetchUserProfile();
@@ -223,21 +235,47 @@ export default function HomeScreen() {
   }, []);
 
   const toggleMarket = () => {
-    const toValue = isMarketVisible ? 0 : 1;
-    setMarketVisible(!isMarketVisible);
-
+  if (isMarketVisible) {
+    // Animate out when closing
     Animated.timing(slideAnim, {
-      toValue,
-      duration: 400,
-      easing: Easing.out(Easing.ease),
+      toValue: 0,
+      duration: 300,
+      easing: Easing.in(Easing.ease),
       useNativeDriver: true,
-    }).start();
-  };
+    }).start(() => {
+      setMarketVisible(false);
+    });
+  } else {
+    // Animate in when opening
+    setMarketVisible(true);
+    // Small delay to ensure modal is rendered before animating
+    setTimeout(() => {
+      Animated.timing(slideAnim, {
+        toValue: 1,
+        duration: 400,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }).start();
+    }, 10);
+  }
+};
 
   const handleMarketAction = (path: string) => {
-    toggleMarket();
-    router.push(path as any);
-  };
+  // Animate out first
+  Animated.timing(slideAnim, {
+    toValue: 0,
+    duration: 250,
+    easing: Easing.in(Easing.ease),
+    useNativeDriver: true,
+  }).start(() => {
+    // After animation completes, close modal and navigate
+    setMarketVisible(false);
+    // Small delay to ensure state updates before navigation
+    setTimeout(() => {
+      router.push(path as any);
+    }, 50);
+  });
+};
 
   const handleLogout = async () => {
     try {

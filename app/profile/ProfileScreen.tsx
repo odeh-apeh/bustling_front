@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BASE_URL } from "@/helpers/core-service";
+import { useToast } from "@/contexts/toast-content";
 
 type UserProfile = {
   id: number;
@@ -45,6 +46,7 @@ export default function ProfileScreen() {
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const {setMarketVisible} = useToast();
 
   // Fetch user profile data
   const fetchProfile = async (isRefreshing = false) => {
@@ -285,7 +287,12 @@ export default function ProfileScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => 
+          {
+            router.back();
+            setMarketVisible(false)
+          }
+            }>
           <Ionicons name="chevron-back" size={26} color="#000" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Profile</Text>
