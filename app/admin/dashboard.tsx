@@ -20,6 +20,8 @@ import { BASE_URL, CoreService } from '@/helpers/core-service';
 import { useToast } from '@/contexts/toast-content';
 import { TicketType } from '../support/CustomerServiceScreen';
 import AdminTicketsScreen from './issues';
+import TwoFactorModal from '@/components/two-factor';
+import { Admin } from './AdminManageScreen';
 
 const { width, height } = Dimensions.get('window');
 const isSmallDevice = width < 375;
@@ -96,6 +98,9 @@ export default function AdminDashboard() {
   const [tickets, setTickets] = useState<TicketType[]>([]);
   const service: CoreService = new CoreService();
   const [isViewingTickets, setViewingTickets] = useState<boolean>(false);
+  const [twoFactorModal, setTwoFactorModal] = useState<boolean>(false);
+  const [admin, setAdmin] = useState<Admin>();
+  
 
   const { showToast } = useToast();
 
@@ -114,11 +119,30 @@ export default function AdminDashboard() {
     }
   };
 
+  const findAdmin = async (id:any) => {
+    try{
+      const res = await service.get<Admin>(`/api/admin/find-one/${id}`);
+      if(res.success && res.data){
+        setAdmin(res.data);
+        if(res.data.factor){
+          setTwoFactorModal(true);
+        }
+      }else{
+        showToast(res.message, 'error');
+      }
+    }catch(e:any){
+      showToast(e.message,'error');
+    }
+  }
+
   useEffect(() => {
-    loadAdminUser();
-    fetchDashboardData();
-    fetchTickets();
-  }, []);
+  const init = async () => {
+    await loadAdminUser();
+    await fetchDashboardData();
+    await fetchTickets();
+  };
+  init();
+}, []);
 
   const loadAdminUser = async () => {
     try {
@@ -130,6 +154,8 @@ export default function AdminDashboard() {
   };
 
   const fetchDashboardData = async () => {
+    const userData = await AsyncStorage.getItem('adminUser');
+    const parsedUser = userData ? JSON.parse(userData) : null;
     try {
       const token = await AsyncStorage.getItem('adminToken');
       const response = await fetch(`${API_URL}/api/admin/dashboard`, {
@@ -139,6 +165,9 @@ export default function AdminDashboard() {
       if (response.ok) {
         const data = await response.json();
         setStats(data.stats);
+        if (parsedUser?.id) {
+        await findAdmin(parsedUser.id);
+      }
         setRecentTransactions(data.recentTransactions || []);
       } else if (response.status === 403) {
         router.replace('/auth/account-support');
@@ -179,6 +208,45 @@ export default function AdminDashboard() {
     ]);
   };
 
+  //=============================================//
+  const sendOtp = async() => {
+      try{
+        const res = await service.get(`/api/admin/send-otp/${admin?.email}`);
+        if(res.success){
+          showToast(res.message);
+          console.log(res.message);
+        }else{
+          showToast(res.message,'error');
+        }
+      }catch(e:any){
+        showToast(e.message,'error');
+      }
+  }
+
+  const verifyOtp = async (code: string): Promise<void> => {
+  const payload = {
+    email: admin?.email,
+    code: code
+  }
+  try {
+    const res = await service.send('/api/admin/verify-otp', payload);
+    if (res.success) {
+      showToast(res.message);
+      setTwoFactorModal(false);
+      return Promise.resolve(); // ✅ Return resolved promise
+    } else {
+      showToast(res.message, 'error');
+      return Promise.reject(new Error(res.message)); // ✅ Return rejected promise
+    }
+  } catch(e: any) {
+    showToast(e.message, 'error');
+    return Promise.reject(e); // ✅ Return rejected promise
+  }
+}
+
+  
+  //=============================================//
+
   const formatCurrency = (amount: number) => `₦${amount?.toLocaleString() || '0'}`;
 
   if (loading && !stats) {
@@ -194,6 +262,16 @@ export default function AdminDashboard() {
     return <AdminTicketsScreen onBack={() => setViewingTickets(false)} />;
   }
 
+  if(twoFactorModal){
+    return (
+     <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+          {admin && (
+        <TwoFactorModal visible={twoFactorModal} email={admin.email} onVerify={(otp) => verifyOtp(otp)} onClose={() => {}} resendOTP={() => sendOtp()}></TwoFactorModal>
+      )}
+       </View>
+    );
+  }
+
   const openCount = tickets.filter(t => t.status.toLowerCase() === 'open').length;
 
   return (
@@ -204,7 +282,8 @@ export default function AdminDashboard() {
           headerShown: false
         }}
       />
-
+       
+      
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -213,6 +292,7 @@ export default function AdminDashboard() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#3986f9']} tintColor="#3986f9" />
         }
       >
+       
         {/* ── Hero Header ── */}
         <View style={styles.hero}>
           {/* Decorative circles */}
@@ -286,6 +366,8 @@ export default function AdminDashboard() {
             <StatCard title="Deposits" value={stats?.pendingDeposits || 0} icon="cash-outline" color="#00C48C" onPress={() => router.push('/admin/pending-deposits' as any)} loading={loading} />
             <StatCard title="Withdrawals" value={stats?.pendingWithdrawals || 0} icon="card-outline" color="#FF6472" onPress={() => router.push('/admin/pending-withdrawals' as any)} loading={loading} />
             <StatCard title="Profile" value="" icon="person" color="#1565C0" onPress={() => router.push('/admin/AdminProfileScreen' as any)} loading={loading} />
+            <StatCard title="Manage" value="" icon="settings" color="#90c4cf" onPress={() => router.push('/admin/AdminManageScreen' as any)} loading={loading} />
+              
           </View>
         </View>
 

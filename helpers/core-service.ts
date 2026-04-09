@@ -76,6 +76,27 @@ export class CoreService {
         }
     }
 
+    async remove<T = any>(endpoint: string, payload: any = {}): Promise<ServiceType<T>> {
+        try {
+            const res = await fetch(`${this.BASE_URL}${endpoint}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const result = await res.json();
+            return ServiceType.fromApi<T>(result);
+        } catch (e: any) {
+            return new ServiceType<T>(
+                false,
+                e.message || 'Something went wrong',
+                null
+            );
+        }
+    }
+
     async get<T = any>(endpoint: string): Promise<ServiceType<T>> {
         try {
             const res = await fetch(`${this.BASE_URL}${endpoint}`);

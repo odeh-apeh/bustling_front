@@ -81,6 +81,7 @@ export default function AccountSupportScreen() {
         // Store admin session from backend response
         await AsyncStorage.setItem('adminUser', JSON.stringify(data.user));
         await AsyncStorage.setItem('adminToken', 'admin-authenticated');
+        await AsyncStorage.setItem('admin_id', data.user.id.toString());
         
         showToast('Admin login successful', 'success');
         router.replace("/admin/dashboard");

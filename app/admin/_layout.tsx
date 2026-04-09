@@ -97,6 +97,12 @@ export default function AdminLayout() {
           title: 'Profile'
         }}
       />
+      <Stack.Screen
+        name='AdminManageScreen'
+        options={{
+          title: 'Profile'
+        }}
+      />
     </Stack>
   );
 }
