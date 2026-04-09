@@ -312,6 +312,7 @@ useEffect(() => {
         statusBarStyle: 'light',
       }} />
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        
         <View style={styles.innerContainer}>
           
           {/* Header */}
@@ -549,8 +550,8 @@ useEffect(() => {
             <BlurView intensity={90} style={styles.bottomNavWrapper}>
               <View style={styles.bottomNav}>
                 <TouchableOpacity style={styles.bottomNavButton}>
-                  <Ionicons name="home" size={24} color={COLORS.primary} />
-                  <Text style={[styles.bottomNavText, { color: COLORS.primary }]}>Home</Text>
+                  <Ionicons name="home" size={24} color={!isMarketVisible ? COLORS.primary : COLORS.textLight} />
+                  <Text style={[styles.bottomNavText, { color: !isMarketVisible ? COLORS.primary : COLORS.textLight }]}>Home</Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity style={styles.bottomNavButton} onPress={toggleMarket}>
@@ -589,8 +590,8 @@ useEffect(() => {
             <SafeAreaView edges={['bottom']} style={styles.bottomNavWrapper}>
               <View style={styles.bottomNav}>
                 <TouchableOpacity style={styles.bottomNavButton}>
-                  <Ionicons name="home" size={24} color={COLORS.primary} />
-                  <Text style={[styles.bottomNavText, { color: COLORS.primary }]}>Home</Text>
+                  <Ionicons name="home" size={24} color={!isMarketVisible ? COLORS.primary : COLORS.textLight} />
+                  <Text style={[styles.bottomNavText, { color:!isMarketVisible ? COLORS.primary : COLORS.textLight }]}>Home</Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity style={styles.bottomNavButton} onPress={toggleMarket}>
@@ -632,6 +633,20 @@ useEffect(() => {
 
 
 {isMarketVisible && (
+  <>
+   {/* Backdrop Blur */}
+    <BlurView 
+      intensity={isIOS ? 30 : 50} 
+      tint="dark" 
+      style={StyleSheet.absoluteFillObject}
+    >
+      <TouchableOpacity 
+        style={styles.backdropTouchArea} 
+        activeOpacity={1} 
+        onPress={toggleMarket}
+      />
+    </BlurView>
+ 
   <SafeAreaView edges={['bottom']} style={styles.marketModalContainer}>
     <Animated.View
       style={[
@@ -704,6 +719,7 @@ useEffect(() => {
       <View style={styles.modalBottomSafeArea} />
     </Animated.View>
   </SafeAreaView>
+   </>
 )}
         </View>
       </SafeAreaView>
@@ -716,7 +732,9 @@ const styles = StyleSheet.create({
     flex: 1, 
     backgroundColor: COLORS.background,
   },
-
+backdropTouchArea: {
+    flex: 1,
+  },
 
 modalBottomSafeArea: {
   height: isIOS ? 40 : 20,
@@ -1015,25 +1033,26 @@ modalBottomSafeArea: {
     fontWeight: '600',
     marginTop: 3,
   },
-  marketModalContainer: {
-    position: "absolute",
+ marketModalContainer: {
+    position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: height * 0.6,
-    backgroundColor: "#fff",
+    zIndex: 1,
   },
+  
+  // Make sure your marketModal has a background color
   marketModal: {
-    flex: 1,
     backgroundColor: COLORS.white,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    elevation: 8,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
   },
+  
   marketContent: {
     paddingHorizontal: 20,
     paddingTop: 20,

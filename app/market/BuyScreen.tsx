@@ -596,8 +596,8 @@ export default function BuyScreen() {
           <BlurView intensity={90} style={styles.bottomNavWrapper}>
             <View style={styles.bottomNav}>
               <TouchableOpacity style={styles.bottomNavButton} onPress={() => router.push("/home/Homescreen")}>
-                <Ionicons name="home" size={22} color={COLORS.primary} />
-                <Text style={[styles.bottomNavText, { color: COLORS.primary }]}>Home</Text>
+                <Ionicons name="home" size={22} color={!isMarketVisible ? COLORS.primary : COLORS.textLight} />
+                <Text style={[styles.bottomNavText, { color:!isMarketVisible ? COLORS.primary : COLORS.textLight }]}>Home</Text>
               </TouchableOpacity>
               
               <TouchableOpacity style={styles.bottomNavButton} onPress={toggleMarket}>
@@ -628,13 +628,13 @@ export default function BuyScreen() {
           <SafeAreaView edges={['bottom']} style={styles.bottomNavWrapper}>
             <View style={styles.bottomNav}>
               <TouchableOpacity style={styles.bottomNavButton} onPress={() => router.push("/home/Homescreen")}>
-                <Ionicons name="home" size={22} color={COLORS.primary} />
-                <Text style={[styles.bottomNavText, { color: COLORS.primary }]}>Home</Text>
+                <Ionicons name="home" size={22} color={isMarketVisible ? COLORS.primary : COLORS.textLight} />
+                <Text style={[styles.bottomNavText, { color: isMarketVisible ? COLORS.primary : COLORS.textLight }]}>Home</Text>
               </TouchableOpacity>
               
               <TouchableOpacity style={styles.bottomNavButton} onPress={toggleMarket}>
-                <Ionicons name="cart-outline" size={22} color={isMarketVisible ? COLORS.primary : COLORS.textLight} />
-                <Text style={[styles.bottomNavText, { color: isMarketVisible ? COLORS.primary : COLORS.textLight }]}>
+                <Ionicons name="cart-outline" size={22} color={!isMarketVisible ? COLORS.primary : COLORS.textLight} />
+                <Text style={[styles.bottomNavText, { color: !isMarketVisible ? COLORS.primary : COLORS.textLight }]}>
                   Market
                 </Text>
               </TouchableOpacity>
