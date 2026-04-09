@@ -18,11 +18,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BASE_URL } from '@/helpers/core-service';
+import { useToast } from '@/contexts/toast-content';
 
 const { width } = Dimensions.get('window');
 
 // First level security - change this!
-const ACCESS_CODE = 'ERR2024';
+const ACCESS_CODE = 'BUS2026';
 
 // Your backend API URL
 const API_URL = `${BASE_URL}`; // Change to your server IP
@@ -35,10 +36,11 @@ export default function AccountSupportScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const {showToast} = useToast();
 
   const handleAccessCodeSubmit = () => {
     if (!accessCode.trim()) {
-      Alert.alert('Error', 'Please enter access code');
+      showToast('Please enter access code', 'error');
       return;
     }
 
@@ -46,13 +48,13 @@ export default function AccountSupportScreen() {
       setStep('login');
       setAccessCode('');
     } else {
-      Alert.alert('Invalid Code', 'The access code is incorrect');
+      showToast('Invalid Code', 'error');
     }
   };
 
   const handleAdminLogin = async () => {
     if (!phone.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please enter phone and password');
+      showToast('Please enter phone and password', 'error');
       return;
     }
 
@@ -80,15 +82,15 @@ export default function AccountSupportScreen() {
         await AsyncStorage.setItem('adminUser', JSON.stringify(data.user));
         await AsyncStorage.setItem('adminToken', 'admin-authenticated');
         
-        Alert.alert('Success', 'Admin login successful');
+        showToast('Admin login successful', 'success');
         router.replace("/admin/dashboard");
       } else {
-        Alert.alert('Login Failed', data.message || 'Invalid admin credentials');
+        showToast(data.message || 'Invalid admin credentials', 'error');
       }
       
     } catch (error: any) {
       console.error('💥 Admin login error:', error);
-      Alert.alert('Error', 'Network error. Please check your connection.');
+      showToast('Network error. Please check your connection.', 'error');
     } finally {
       setLoading(false);
       setPassword('');

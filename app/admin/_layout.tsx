@@ -91,6 +91,12 @@ export default function AdminLayout() {
           title: 'Pending-Withdrawals'
         }}
       />
+      <Stack.Screen
+        name='AdminProfileScreen'
+        options={{
+          title: 'Profile'
+        }}
+      />
     </Stack>
   );
 }

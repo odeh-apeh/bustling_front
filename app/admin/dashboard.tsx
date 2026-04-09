@@ -285,6 +285,7 @@ export default function AdminDashboard() {
             <StatCard title="Active Disputes" value={stats?.pendingDisputes || 0} icon="warning" color="#FF9F43" onPress={() => router.push('/admin/disputes')} loading={loading} />
             <StatCard title="Deposits" value={stats?.pendingDeposits || 0} icon="cash-outline" color="#00C48C" onPress={() => router.push('/admin/pending-deposits' as any)} loading={loading} />
             <StatCard title="Withdrawals" value={stats?.pendingWithdrawals || 0} icon="card-outline" color="#FF6472" onPress={() => router.push('/admin/pending-withdrawals' as any)} loading={loading} />
+            <StatCard title="Profile" value="" icon="person" color="#1565C0" onPress={() => router.push('/admin/AdminProfileScreen' as any)} loading={loading} />
           </View>
         </View>
 
@@ -295,10 +296,10 @@ export default function AdminDashboard() {
               <Text style={styles.sectionLabel}>ACTIVITY</Text>
               <Text style={styles.sectionTitle}>Recent Transactions</Text>
             </View>
-            <TouchableOpacity style={styles.viewAllBtn} onPress={() => router.push('/admin/transactions')}>
+            {/* <TouchableOpacity style={styles.viewAllBtn} onPress={() => router.push('/admin/transactions')}>
               <Text style={styles.viewAllText}>View all</Text>
               <Ionicons name="arrow-forward" size={13} color="#3986f9" />
-            </TouchableOpacity>
+            </TouchableOpacity> */}
           </View>
 
           <View style={styles.txCard}>
