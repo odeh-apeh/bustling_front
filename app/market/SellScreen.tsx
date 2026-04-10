@@ -1,29 +1,31 @@
-import React, { useState, useEffect } from "react";
-import { Stack, useRouter } from "expo-router";
+import ConfirmationModal, { useConfirmation } from "@/components/confirmation";
+import { useToast } from "@/contexts/toast-content";
+import { BASE_URL } from "@/helpers/core-service";
+import { Ionicons } from "@expo/vector-icons";
+import { Stack, useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
+  ActivityIndicator,
+  Alert,
+  BackHandler,
+  Dimensions,
   FlatList,
   Image,
-  TextInput,
-  Dimensions,
-  Alert,
-  ActivityIndicator,
-  RefreshControl,
   Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { BASE_URL } from "@/helpers/core-service";
-import { useToast } from "@/contexts/toast-content";
 
 const { width } = Dimensions.get("window");
 
 // Check if device is iOS
-const isIOS = Platform.OS === 'ios';
+const isIOS = Platform.OS === "ios";
 
 type Product = {
   id: string;
@@ -53,77 +55,109 @@ export default function SellerScreen() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const {showToast, setMarketVisible} = useToast();
+  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
+  const { showToast, setMarketVisible } = useToast();
+  
+
+  // Helper function to extract first image from product
+  const getProductImageUrl = (product: Product) => {
+    if (!product.images) return null;
+
+    let firstImage = null;
+
+    try {
+      // If images is already an array
+      if (Array.isArray(product.images) && product.images.length > 0) {
+        firstImage = product.images[0];
+      }
+      // If images is a string
+      else if (typeof product.images === "string" && product.images.trim()) {
+        // Try to parse as JSON array
+        if (product.images.startsWith("[") && product.images.endsWith("]")) {
+          const parsed = JSON.parse(product.images);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            firstImage = parsed[0];
+          }
+        } else {
+          // Plain string URL
+          firstImage = product.images;
+        }
+      }
+    } catch (error) {
+      console.error("Error parsing images:", error);
+      return null;
+    }
+
+    if (!firstImage) return null;
+
+    // Clean the filename
+    let filename = String(firstImage);
+    filename = filename
+      .replace(/\\/g, "")
+      .replace(/^["']|["']$/g, "")
+      .replace(/^\[|\]$/g, "")
+      .trim();
+
+    // If it's already a full URL
+    if (filename.startsWith("http://") || filename.startsWith("https://")) {
+      return filename;
+    }
+
+    // Handle uploads path
+    const cleanPath = filename.replace(/^\/+/, "");
+    if (cleanPath.includes("uploads/")) {
+      return `${BASE_URL}/${cleanPath}`;
+    }
+
+    return `${BASE_URL}/uploads/${cleanPath}`;
+  };
 
   // Fetch seller's products
- const fetchMyProducts = async () => {
-  try {
-    setRefreshing(true);
-    const response = await fetch(`${BASE_URL}/api/products/my-products`, {
-      credentials: 'include',
-    });
-    
-    const data = await response.json();
-    
-    console.log('📦 My Products RAW API Response:', {
-      success: data.success,
-      productCount: data.products?.length,
-      firstProductRaw: data.products?.[0],
-      // Stringify to see all properties
-      firstProductStringified: JSON.stringify(data.products?.[0], null, 2)
-    });
-    
-    if (data.success) {
-      setProducts(data.products);
-    } else {
-      Alert.alert("Error", "Failed to load your products");
-      setProducts([]);
-    }
-  } catch (error) {
-    console.error('Error fetching products:', error);
-    Alert.alert("Error", "Cannot connect to server");
-    setProducts([]);
-  } finally {
-    setLoading(false);
-    setRefreshing(false);
-  }
-};
-
-useEffect(() => {
-  if (products.length > 0) {
-    console.log('📊 Products Image Analysis:');
-    products.forEach((product, index) => {
-      console.log(`Product ${index + 1}:`, {
-        id: product.id,
-        title: product.title,
-        hasImages: product.images && product.images.length > 0,
-        imageCount: product.images?.length || 0,
-        images: product.images
+  const fetchMyProducts = async () => {
+    try {
+      setRefreshing(true);
+      const response = await fetch(`${BASE_URL}/api/products/my-products`, {
+        credentials: "include",
       });
-    });
-    
-    // Count how many have images
-    const withImages = products.filter(p => p.images && p.images.length > 0).length;
-    console.log(`📸 ${withImages}/${products.length} products have images`);
-  }
-}, [products]);
+
+      const data = await response.json();
+
+      console.log("Fetched products:", data.products);
+
+      if (data.success) {
+        setProducts(data.products);
+        // Reset image errors for new products
+        setImageErrors({});
+      } else {
+        Alert.alert("Error", "Failed to load your products");
+        setProducts([]);
+      }
+    } catch (error) {
+      console.error("Error fetching products:", error);
+      Alert.alert("Error", "Cannot connect to server");
+      setProducts([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
   // Fetch pending orders
   const fetchPendingOrders = async () => {
     try {
       const response = await fetch(`${BASE_URL}/api/orders/pending`, {
-        credentials: 'include',
+        credentials: "include",
       });
-      
+
       const data = await response.json();
-      
+
       if (data.success) {
         setOrders(data.orders);
       } else {
         setOrders([]);
       }
     } catch (error) {
-      console.error('Error fetching orders:', error);
+      console.error("Error fetching orders:", error);
       setOrders([]);
     }
   };
@@ -132,6 +166,24 @@ useEffect(() => {
     fetchMyProducts();
     fetchPendingOrders();
   }, []);
+
+  useFocusEffect(
+      useCallback(() => {
+        const onBackPress = () => {
+          // Your custom function here
+          setMarketVisible(true);
+          router.back();
+          // Return true to prevent default behavior, false to allow it
+          return true;
+        };
+        
+        const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+        
+        return () => {
+          subscription.remove();
+        };
+      }, [])
+    );
 
   const handleUploadProduct = () => {
     router.push("/market/UploadTypeScreen");
@@ -145,133 +197,87 @@ useEffect(() => {
     }
   };
 
+  
+
   const renderProductItem = ({ item }: { item: Product }) => {
-  // Get first image - FIXED VERSION
-  const getFirstImage = () => {
-    console.log('🔍 Product images data:', {
-      id: item.id,
-      title: item.title,
-      rawImages: item.images,
-      imagesType: typeof item.images,
-      isArray: Array.isArray(item.images),
-      length: item.images?.length
-    });
-    
-    if (!item.images) {
-      console.log('❌ No images field');
-      return null;
-    }
-    
-    // If images is already an array
-    if (Array.isArray(item.images) && item.images.length > 0) {
-      const firstImage = item.images[0];
-      console.log('✅ First image from array:', firstImage);
-      return firstImage;
-    }
-    
-    // If images is a string (JSON string)
-    if (typeof item.images === 'string' && item.images.trim()) {
-      try {
-        const parsed = JSON.parse(item.images);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const firstImage = parsed[0];
-          console.log('✅ First image from parsed JSON:', firstImage);
-          return firstImage;
-        }
-      } catch (e) {
-        console.log('❌ Failed to parse images string:', e);
-        // If it's just a plain string (not JSON), use it directly
-        return item.images;
-      }
-    }
-    
-    console.log('❌ No valid image found');
-    return null;
-  };
+    const imageUrl = getProductImageUrl(item);
+    const hasError = imageErrors[item.id];
 
-  const firstImage = getFirstImage();
-  
-  // Construct the URL - FIXED
-  const getImageUrl = () => {
-    if (!firstImage) return null;
-    
-    // Clean the filename
-    let filename = firstImage;
-    
-    // Remove any quotes or backslashes
-    filename = filename.replace(/\\/g, '')
-                       .replace(/^["']|["']$/g, '')
-                       .trim();
-    
-    // Check if it already has "uploads/" prefix
-    if (filename.includes('uploads/')) {
-      return `${BASE_URL}/${filename}`;
-    }
+    return (
+              <TouchableOpacity onPress={() => // Passing params
+        router.push({
+          pathname: "/market/ManageSellScreen",
+          params: { 
+            id: item.id,
+            productTitle: item.title,
+            productPrice: item.price,
+            productImage: imageUrl,
+          }
+        })}>
+        <View style={styles.productCard}>
+          {imageUrl && !hasError ? (
+            <Image
+              source={{ uri: imageUrl }}
+              style={styles.productImage}
+              onError={(e) => {
+                console.log("❌ IMAGE LOAD ERROR:", {
+                  url: imageUrl,
+                  error: e.nativeEvent.error,
+                  productId: item.id,
+                  productTitle: item.title,
+                });
+                setImageErrors((prev) => ({ ...prev, [item.id]: true }));
+              }}
+              onLoad={() => {
+                console.log("✅ IMAGE LOADED:", imageUrl);
+              }}
+            />
+          ) : (
+            <View style={[styles.productImage, styles.placeholderImage]}>
+              <Ionicons name="image-outline" size={24} color="#999" />
+            </View>
+          )}
 
-    return `${BASE_URL}/uploads/${filename}`;
-  };
+          <View style={styles.productInfo}>
+            <Text style={styles.productTitle}>{item.title}</Text>
+            <Text style={styles.productPrice}>
+              ₦{parseFloat(item.price).toLocaleString()}
+            </Text>
 
-  const imageUrl = getImageUrl();
-  
-  console.log('🎯 Final image URL:', {
-    firstImage,
-    imageUrl,
-    productId: item.id,
-    productTitle: item.title
-  });
+            <View style={styles.productStats}>
+              <View style={styles.statItem}>
+                <Ionicons name="eye-outline" size={12} color="#666" />
+                <Text style={styles.statText}>{item.views || 0}</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Ionicons name="cart-outline" size={12} color="#666" />
+                <Text style={styles.statText}>{item.orders || 0}</Text>
+              </View>
+            </View>
 
-  return (
-    <View style={styles.productCard}>
-      {imageUrl ? (
-        <Image 
-          source={{ uri: imageUrl }} 
-          style={styles.productImage} 
-          onError={(e) => {
-            console.log('❌ IMAGE LOAD ERROR:', {
-              url: imageUrl,
-              error: e.nativeEvent.error,
-              productId: item.id
-            });
-          }}
-          onLoad={() => {
-            console.log('✅ IMAGE LOADED SUCCESSFULLY:', imageUrl);
-          }}
-        />
-      ) : (
-        <View style={[styles.productImage, styles.placeholderImage]}>
-          <Ionicons name="image-outline" size={24} color="#999" />
-          <Text style={styles.placeholderText}>No Image</Text>
-        </View>
-      )}
-      
-      <View style={styles.productInfo}>
-        <Text style={styles.productTitle}>{item.title}</Text>
-        <Text style={styles.productPrice}>₦{parseFloat(item.price).toLocaleString()}</Text>
-        
-        <View style={styles.productStats}>
-          <View style={styles.statItem}>
-            <Ionicons name="eye-outline" size={12} color="#666" />
-            <Text style={styles.statText}>{item.views || 0}</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Ionicons name="cart-outline" size={12} color="#666" />
-            <Text style={styles.statText}>{item.orders || 0}</Text>
+            <View
+              style={[
+                styles.statusBadge,
+                item.status === "active"
+                  ? styles.activeBadge
+                  : item.status === "inactive"
+                    ? styles.soldBadge
+                    : styles.draftBadge,
+              ]}
+            >
+              <Text style={styles.statusText}>
+                {item.status === "active"
+                  ? "Active"
+                  : item.status === "inactive"
+                    ? "Inactive"
+                    : "Draft"}
+              </Text>
+            </View>
           </View>
         </View>
-        
-        <View style={[styles.statusBadge, 
-          item.status === 'active' ? styles.activeBadge : 
-          item.status === 'sold' ? styles.soldBadge : styles.draftBadge
-        ]}>
-          <Text style={styles.statusText}>
-            {item.status === 'active' ? 'Active' : 
-             item.status === 'sold' ? 'Sold' : 'Draft'}
-          </Text>
-        </View>
-      </View>
-    </View>
-  );
-};
+      </TouchableOpacity>
+    );
+  };
 
   const renderOrderItem = ({ item }: { item: Order }) => (
     <View style={styles.orderCard}>
@@ -279,20 +285,30 @@ useEffect(() => {
         <Text style={styles.orderProduct}>{item.product_name}</Text>
         <Text style={styles.orderPrice}>{item.price}</Text>
       </View>
-      
+
       <View style={styles.orderDetails}>
         <Text style={styles.buyerName}>Buyer: {item.buyer_name}</Text>
-        <Text style={styles.orderDate}>Ordered: {new Date(item.order_date).toLocaleDateString()}</Text>
+        <Text style={styles.orderDate}>
+          Ordered: {new Date(item.order_date).toLocaleDateString()}
+        </Text>
       </View>
-      
-      <View style={[
-        styles.orderStatus,
-        item.status === 'awaiting_delivery' ? styles.awaitingDelivery :
-        item.status === 'payment_held' ? styles.paymentHeld : styles.completed
-      ]}>
+
+      <View
+        style={[
+          styles.orderStatus,
+          item.status === "awaiting_delivery"
+            ? styles.awaitingDelivery
+            : item.status === "payment_held"
+              ? styles.paymentHeld
+              : styles.completed,
+        ]}
+      >
         <Text style={styles.orderStatusText}>
-          {item.status === 'awaiting_delivery' ? 'Awaiting Delivery' :
-           item.status === 'payment_held' ? 'Payment Held in Escrow' : 'Completed'}
+          {item.status === "awaiting_delivery"
+            ? "Awaiting Delivery"
+            : item.status === "payment_held"
+              ? "Payment Held in Escrow"
+              : "Completed"}
         </Text>
       </View>
     </View>
@@ -307,22 +323,30 @@ useEffect(() => {
     );
   }
 
+  // Filter products based on search
+  const filteredProducts = products.filter((product) =>
+    product.title.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
+
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <Stack.Screen options={{ 
-        headerShown: false,
-        statusBarStyle: 'dark',
-        statusBarBackgroundColor: '#fff',
-      }} />
-      
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      <Stack.Screen
+        options={{
+          headerShown: false,
+          statusBarStyle: "dark",
+          statusBarBackgroundColor: "#fff",
+        }}
+      />
+
       <View style={styles.innerContainer}>
         {/* Header */}
         <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => 
-            {
+          <TouchableOpacity
+            onPress={() => {
               router.back();
               setMarketVisible(true);
-          }}>
+            }}
+          >
             <Ionicons name="chevron-back" size={26} color="#000" />
           </TouchableOpacity>
 
@@ -333,11 +357,12 @@ useEffect(() => {
             style={styles.searchInput}
             value={searchQuery}
             onChangeText={setSearchQuery}
+            placeholderTextColor="#999"
           />
         </View>
 
-        <ScrollView 
-          showsVerticalScrollIndicator={false} 
+        <ScrollView
+          showsVerticalScrollIndicator={false}
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           refreshControl={
@@ -346,34 +371,53 @@ useEffect(() => {
         >
           {/* Upload Product Section */}
           <View style={styles.uploadSection}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.uploadButton}
               onPress={handleUploadProduct}
             >
               <View style={styles.uploadIcon}>
-                <Ionicons name="cloud-upload-outline" size={40} color="#007AFF" />
+                <Ionicons
+                  name="cloud-upload-outline"
+                  size={40}
+                  color="#007AFF"
+                />
               </View>
               <Text style={styles.uploadText}>Upload New Product</Text>
-              <Text style={styles.uploadSubtext}>Add photos, description, and pricing</Text>
+              <Text style={styles.uploadSubtext}>
+                Add photos, description, and pricing
+              </Text>
             </TouchableOpacity>
           </View>
 
           {/* Tab Navigation */}
           <View style={styles.tabContainer}>
-            <TouchableOpacity 
-              style={[styles.tab, selectedTab === "products" && styles.activeTab]}
+            <TouchableOpacity
+              style={[
+                styles.tab,
+                selectedTab === "products" && styles.activeTab,
+              ]}
               onPress={() => setSelectedTab("products")}
             >
-              <Text style={[styles.tabText, selectedTab === "products" && styles.activeTabText]}>
-                My Products ({products.length})
+              <Text
+                style={[
+                  styles.tabText,
+                  selectedTab === "products" && styles.activeTabText,
+                ]}
+              >
+                My Products ({filteredProducts.length})
               </Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={[styles.tab, selectedTab === "orders" && styles.activeTab]}
               onPress={() => setSelectedTab("orders")}
             >
-              <Text style={[styles.tabText, selectedTab === "orders" && styles.activeTabText]}>
+              <Text
+                style={[
+                  styles.tabText,
+                  selectedTab === "orders" && styles.activeTabText,
+                ]}
+              >
                 Pending Orders ({orders.length})
               </Text>
             </TouchableOpacity>
@@ -383,15 +427,21 @@ useEffect(() => {
           {selectedTab === "products" && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Your Products</Text>
-              {products.length === 0 ? (
+              {filteredProducts.length === 0 ? (
                 <View style={styles.emptyState}>
                   <Ionicons name="cube-outline" size={50} color="#ccc" />
-                  <Text style={styles.emptyStateText}>No products yet</Text>
-                  <Text style={styles.emptyStateSubtext}>Upload your first product to start selling</Text>
+                  <Text style={styles.emptyStateText}>
+                    {searchQuery ? "No matching products" : "No products yet"}
+                  </Text>
+                  <Text style={styles.emptyStateSubtext}>
+                    {searchQuery
+                      ? "Try a different search term"
+                      : "Upload your first product to start selling"}
+                  </Text>
                 </View>
               ) : (
                 <FlatList
-                  data={products}
+                  data={filteredProducts}
                   renderItem={renderProductItem}
                   keyExtractor={(item) => item.id.toString()}
                   scrollEnabled={false}
@@ -410,7 +460,9 @@ useEffect(() => {
                 <View style={styles.emptyState}>
                   <Ionicons name="receipt-outline" size={50} color="#ccc" />
                   <Text style={styles.emptyStateText}>No pending orders</Text>
-                  <Text style={styles.emptyStateSubtext}>Orders will appear here when customers buy your products</Text>
+                  <Text style={styles.emptyStateSubtext}>
+                    Orders will appear here when customers buy your products
+                  </Text>
                 </View>
               ) : (
                 <FlatList
@@ -429,274 +481,350 @@ useEffect(() => {
           <View style={styles.bottomPadding} />
         </ScrollView>
       </View>
+
+      <TouchableOpacity
+        style={styles.floatingButton}
+        onPress={() => router.push("/market/ManageSellScreen")}
+      >
+        <Ionicons name="options" size={20} color="#fff" />
+      </TouchableOpacity>
+      
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: "#fff",
+  container: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
   },
   innerContainer: {
     flex: 1,
+    backgroundColor: "#F8FAFC",
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 30,
+    paddingBottom: 80,
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 15,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     marginTop: isIOS ? 0 : 5,
+    gap: 12,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
+    elevation: 2,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginLeft: 10,
-    color: '#000',
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#1F2937",
+    letterSpacing: -0.3,
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#F8FAFC",
   },
   loadingText: {
-    marginTop: 10,
-    color: '#666',
-    fontSize: 16,
+    marginTop: 12,
+    color: "#6B7280",
+    fontSize: 14,
+    fontWeight: "500",
   },
   emptyState: {
-    alignItems: 'center',
-    paddingVertical: 50,
-    paddingHorizontal: 20,
+    alignItems: "center",
+    paddingVertical: 60,
+    paddingHorizontal: 32,
   },
   emptyStateText: {
     fontSize: 16,
-    color: '#666',
-    marginTop: 10,
-    fontWeight: '600',
+    color: "#6B7280",
+    marginTop: 12,
+    fontWeight: "600",
   },
   emptyStateSubtext: {
     fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-    marginTop: 5,
+    color: "#9CA3AF",
+    textAlign: "center",
+    marginTop: 6,
     lineHeight: 20,
   },
   placeholderImage: {
-    backgroundColor: '#f0f0f0',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#F3F4F6",
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 8,
   },
   placeholderText: {
-    color: '#999',
+    color: "#D1D5DB",
     fontSize: 12,
     marginTop: 4,
   },
   searchInput: {
     flex: 1,
-    marginLeft: 10,
-    backgroundColor: "#f1f1f1",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    height: 38,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    height: 42,
     fontSize: 14,
+    color: "#1F2937",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   uploadSection: {
     paddingHorizontal: 20,
-    marginTop: 15,
-    marginBottom: 20,
+    marginTop: 20,
+    marginBottom: 24,
   },
   uploadButton: {
     borderWidth: 2,
     borderColor: "#007AFF",
     borderStyle: "dashed",
-    borderRadius: 12,
-    padding: 25,
+    borderRadius: 16,
+    padding: 28,
     alignItems: "center",
-    backgroundColor: "#f8f9ff",
+    backgroundColor: "#F0F7FF",
+    shadowColor: "#007AFF",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   uploadIcon: {
-    marginBottom: 10,
+    marginBottom: 12,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#007AFF",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   uploadText: {
     fontSize: 18,
-    fontWeight: "600",
+    fontWeight: "700",
     color: "#007AFF",
-    marginBottom: 5,
+    marginBottom: 6,
   },
   uploadSubtext: {
-    fontSize: 14,
-    color: "#666",
+    fontSize: 13,
+    color: "#6B7280",
     textAlign: "center",
-    lineHeight: 20,
+    lineHeight: 18,
   },
   tabContainer: {
     flexDirection: "row",
     paddingHorizontal: 20,
     marginBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    gap: 8,
   },
   tab: {
     flex: 1,
     paddingVertical: 12,
     alignItems: "center",
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
+    borderRadius: 12,
+    backgroundColor: "#F3F4F6",
   },
   activeTab: {
-    borderBottomColor: "#007AFF",
+    backgroundColor: "#007AFF",
+    shadowColor: "#007AFF",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   tabText: {
     fontSize: 14,
-    fontWeight: "500",
-    color: "#666",
+    fontWeight: "600",
+    color: "#6B7280",
   },
   activeTabText: {
-    color: "#007AFF",
-    fontWeight: "600",
+    color: "#FFFFFF",
   },
   section: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     marginBottom: 20,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: "600",
-    marginBottom: 15,
-    color: "#111",
+    fontWeight: "700",
+    marginBottom: 16,
+    color: "#1F2937",
+    letterSpacing: -0.3,
   },
   productsList: {
     gap: 12,
   },
   productCard: {
     flexDirection: "row",
-    backgroundColor: "#f8f9ff",
-    padding: 12,
-    borderRadius: 10,
+    backgroundColor: "#FFFFFF",
+    padding: 14,
+    borderRadius: 16,
     alignItems: "center",
+    //elevation: 3,
+    borderWidth: 1,
+    borderColor: "#cacfd3",
   },
   productImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    marginRight: 12,
+    width: 70,
+    height: 70,
+    borderRadius: 12,
+    marginRight: 14,
+    backgroundColor: "#F3F4F6",
   },
   productInfo: {
     flex: 1,
   },
   productTitle: {
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "700",
     marginBottom: 4,
-    color: "#000",
+    color: "#1F2937",
+    lineHeight: 20,
   },
   productPrice: {
-    fontSize: 16,
-    fontWeight: "700",
+    fontSize: 17,
+    fontWeight: "800",
     color: "#007AFF",
     marginBottom: 8,
   },
   productStats: {
     flexDirection: "row",
-    gap: 15,
+    gap: 12,
     marginBottom: 8,
   },
   statItem: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-  },
-  statText: {
-    fontSize: 12,
-    color: "#666",
-  },
-  statusBadge: {
-    alignSelf: 'flex-start',
+    backgroundColor: "#F3F4F6",
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 3,
     borderRadius: 6,
   },
+  statText: {
+    fontSize: 11,
+    color: "#6B7280",
+    fontWeight: "500",
+  },
+  statusBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
   activeBadge: {
-    backgroundColor: "#e8f5e8",
+    backgroundColor: "#D1FAE5",
   },
   soldBadge: {
-    backgroundColor: "#fff3cd",
+    backgroundColor: "#FEF3C7",
   },
   draftBadge: {
-    backgroundColor: "#e3f2fd",
+    backgroundColor: "#DBEAFE",
   },
   statusText: {
     fontSize: 10,
-    fontWeight: "600",
-    color: '#333',
+    fontWeight: "700",
+    color: "#1F2937",
   },
   ordersList: {
     gap: 12,
   },
   orderCard: {
-    backgroundColor: "#f8f9ff",
-    padding: 15,
-    borderRadius: 10,
+    backgroundColor: "#FFFFFF",
+    padding: 16,
+    borderRadius: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: "#F0F0F0",
   },
   orderHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 10,
   },
   orderProduct: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#000",
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#1F2937",
     flex: 1,
     marginRight: 10,
   },
   orderPrice: {
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "800",
     color: "#007AFF",
   },
   orderDetails: {
-    marginBottom: 10,
+    marginBottom: 12,
+    gap: 4,
   },
   buyerName: {
-    fontSize: 14,
-    color: "#666",
+    fontSize: 13,
+    color: "#6B7280",
     marginBottom: 2,
   },
   orderDate: {
-    fontSize: 12,
-    color: "#999",
+    fontSize: 11,
+    color: "#9CA3AF",
   },
   orderStatus: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
+    borderRadius: 8,
+    alignSelf: "flex-start",
   },
   awaitingDelivery: {
-    backgroundColor: "#fff3cd",
+    backgroundColor: "#FEF3C7",
   },
   paymentHeld: {
-    backgroundColor: "#e3f2fd",
+    backgroundColor: "#DBEAFE",
   },
   completed: {
-    backgroundColor: "#e8f5e8",
+    backgroundColor: "#D1FAE5",
   },
   orderStatusText: {
     fontSize: 12,
-    fontWeight: "600",
-    color: "#333",
+    fontWeight: "700",
+    color: "#1F2937",
   },
   bottomPadding: {
-    height: 30,
+    height: 10,
+  },
+  floatingButton: {
+    position: "absolute",
+    bottom: 20,
+    right: 20,
+    backgroundColor: "#007AFF",
+    width: 50,
+    height: 50,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#007AFF",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
 });

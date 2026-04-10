@@ -8,18 +8,19 @@ import {
   ScrollView,
   Image,
   Alert,
-  Dimensions,
   Platform,
   TextInput,
   ActivityIndicator,
+  StatusBar,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, FontAwesome5 } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BASE_URL } from "@/helpers/core-service";
 
-const { width } = Dimensions.get("window");
 const isIOS = Platform.OS === 'ios';
+const statusBarHeight = isIOS ? 20 : StatusBar.currentHeight || 0;
 
 interface UserBalance {
   balance: number;
@@ -28,56 +29,38 @@ interface UserBalance {
 export default function ServiceDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-
-  useEffect(() => {
-    console.log('=== SERVICE DETAIL PARAMS ===');
-    console.log('All params:', params);
-    console.log('serviceId:', params.serviceId);
-    console.log('Type of serviceId:', typeof params.serviceId);
-  }, [params]);
   
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedTime, setSelectedTime] = useState("");
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [bookingStep, setBookingStep] = useState(1); // 1: Select date/time, 2: Confirm booking
-  const [serviceDuration, setServiceDuration] = useState("1 hour"); // Default duration
-  const [agreedPrice, setAgreedPrice] = useState(""); // For negotiated price
+  const [bookingStep, setBookingStep] = useState(1);
+  const [serviceDuration, setServiceDuration] = useState("1 hour");
+  const [agreedPrice, setAgreedPrice] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [userBalance, setUserBalance] = useState<UserBalance | null>(null);
   const [loading, setLoading] = useState(true);
-  const [customPrice, setCustomPrice] = useState(""); // For fixed/hourly services where user can input custom price
+  const [customPrice, setCustomPrice] = useState("");
 
-  // Available time slots
   const timeSlots = [
     "09:00 AM", "10:00 AM", "11:00 AM", "12:00 PM", 
     "01:00 PM", "02:00 PM", "03:00 PM", "04:00 PM", "05:00 PM"
   ];
 
-  // Service details from params with safe defaults
   const serviceDetails = {
     id: params.serviceId as string || "",
     title: params.serviceName as string || "Service",
     seller: params.sellerName as string || "Seller",
     sellerId: params.sellerId as string || "",
     price: params.price as string || "0",
-    pricingType: params.pricingType as string || "fixed", // 'fixed', 'hourly', or 'negotiable'
+    pricingType: params.pricingType as string || "fixed",
     serviceType: params.serviceType as string || "Service",
     experience: params.experience as string || "experienced",
     rating: params.rating as string || "0.0",
     location: params.location as string || "Location not specified",
     description: params.description as string || "No description available",
-    // Get image from params if available
     image: params.imageUri ? { uri: params.imageUri as string } : undefined,
   };
 
-  useEffect(() => {
-    console.log('=== SERVICE DETAILS OBJECT ===');
-    console.log('Service ID:', serviceDetails.id);
-    console.log('Is ID empty?', serviceDetails.id === '');
-    console.log('Full serviceDetails:', serviceDetails);
-  }, [serviceDetails]);
-
-  // Fetch user balance
   useEffect(() => {
     fetchUserBalance();
   }, []);
@@ -92,21 +75,16 @@ export default function ServiceDetailScreen() {
       
       if (data.balance !== undefined) {
         setUserBalance({ balance: data.balance });
-      } else {
-        Alert.alert("Error", "Failed to load wallet balance");
       }
     } catch (error) {
       console.error('Error fetching balance:', error);
-      Alert.alert("Error", "Failed to load wallet balance");
     } finally {
       setLoading(false);
     }
   };
 
-  // Extract numeric price safely
   const getPriceNumericValue = () => {
     const priceString = serviceDetails.price || "0";
-    // Remove currency symbols and commas, keep only numbers
     const numericValue = parseFloat(priceString.replace(/[^\d.]/g, '')) || 0;
     return numericValue;
   };
@@ -124,121 +102,105 @@ export default function ServiceDetailScreen() {
 
   const calculateTotalPrice = () => {
     if (serviceDetails.pricingType === 'negotiable') {
-      // Use the agreed price if negotiated
       const negotiated = parseFloat(agreedPrice) || 0;
       return negotiated;
     } else if (customPrice) {
-      // Use custom price if user entered one
       const custom = parseFloat(customPrice.replace(/[^\d.]/g, '')) || 0;
       return custom;
     } else {
       const basePrice = getPriceNumericValue();
-      
       if (serviceDetails.pricingType === 'hourly') {
-        // Only multiply if hourly and duration is selected
         const hoursMatch = serviceDuration.match(/\d+/);
         const hours = hoursMatch ? parseInt(hoursMatch[0]) : 1;
         return basePrice * hours;
       }
-      
-      // For fixed price, return as is
       return basePrice;
     }
   };
 
-  // In the handleBookService function in ServiceDetailScreen
-const handleBookService = async () => {
-  if (!selectedTime) {
-    Alert.alert("Error", "Please select a time slot");
-    return;
-  }
-
-  // If pricing is negotiable, ensure price is entered
-  if (serviceDetails.pricingType === 'negotiable' && (!agreedPrice || parseFloat(agreedPrice) <= 0)) {
-    Alert.alert("Error", "Please enter the agreed price");
-    return;
-  }
-
-  if (bookingStep === 1) {
-    setBookingStep(2);
-  } else {
-    // Final booking confirmation with wallet check
-    const totalPrice = calculateTotalPrice();
-    
-    // Check if user has sufficient balance
-    if (!userBalance || userBalance.balance < totalPrice) {
-      Alert.alert(
-        "Insufficient Balance", 
-        `You need ₦${totalPrice.toLocaleString()} but your balance is ₦${userBalance?.balance.toLocaleString() || '0'}`,
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Top Up", onPress: () => router.push("/wallet/DepositScreen") }
-        ]
-      );
+  const handleBookService = async () => {
+    if (!selectedTime) {
+      Alert.alert("Error", "Please select a time slot");
       return;
     }
 
-    setIsProcessing(true);
-
-    try {
-      // Determine the price to use
-      const priceToUse = serviceDetails.pricingType === 'negotiable' 
-        ? agreedPrice 
-        : (customPrice || serviceDetails.price);
-      
-      // Remove currency symbols and parse
-      const numericPrice = parseFloat(priceToUse.replace(/[^\d.]/g, '')) || 0;
-
-      // Call the unified purchase endpoint
-      const response = await fetch(`${BASE_URL}/api/wallet/book-service/${serviceDetails.id}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          quantity: 1, // Services are always quantity 1
-          agreed_price: numericPrice, // Send the agreed price
-          notes: `Service: ${serviceDetails.title}, Provider: ${serviceDetails.seller}`,
-          scheduled_date: selectedDate.toISOString().split('T')[0],
-          scheduled_time: selectedTime,
-          duration: serviceDuration,
-          service_type: serviceDetails.serviceType,
-          location: serviceDetails.location,
-          shipping_address: serviceDetails.location, // Using location as shipping address for services
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        // Navigate to success screen with booking details
-        router.push({
-          pathname: "/payment/OrderSuccessScreen",
-          params: {
-            successType: "service",
-            orderId: data.data?.id || `SVC-${Date.now()}`,
-            itemTitle: serviceDetails.title,
-            itemPrice: `₦${totalPrice.toLocaleString()}`,
-            sellerId: serviceDetails.sellerId,
-            sellerName: serviceDetails.seller,
-            scheduledDate: selectedDate.toISOString().split('T')[0],
-            scheduledTime: selectedTime,
-            serviceDuration: serviceDuration,
-            orderType: 'service'
-          }
-        });
-      } else {
-        Alert.alert("Booking Failed", data.message || "Failed to book service");
-      }
-    } catch (error) {
-      console.error('Booking error:', error);
-      Alert.alert("Error", "Failed to book service. Please try again.");
-    } finally {
-      setIsProcessing(false);
+    if (serviceDetails.pricingType === 'negotiable' && (!agreedPrice || parseFloat(agreedPrice) <= 0)) {
+      Alert.alert("Error", "Please enter the agreed price");
+      return;
     }
-  }
-};
+
+    if (bookingStep === 1) {
+      setBookingStep(2);
+    } else {
+      const totalPrice = calculateTotalPrice();
+      
+      if (!userBalance || userBalance.balance < totalPrice) {
+        Alert.alert(
+          "Insufficient Balance", 
+          `You need ₦${totalPrice.toLocaleString()} but your balance is ₦${userBalance?.balance.toLocaleString() || '0'}`,
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Top Up", onPress: () => router.push("/wallet/DepositScreen") }
+          ]
+        );
+        return;
+      }
+
+      setIsProcessing(true);
+
+      try {
+        const priceToUse = serviceDetails.pricingType === 'negotiable' 
+          ? agreedPrice 
+          : (customPrice || serviceDetails.price);
+        
+        const numericPrice = parseFloat(priceToUse.replace(/[^\d.]/g, '')) || 0;
+
+        const response = await fetch(`${BASE_URL}/api/wallet/book-service/${serviceDetails.id}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            quantity: 1,
+            agreed_price: numericPrice,
+            notes: `Service: ${serviceDetails.title}, Provider: ${serviceDetails.seller}`,
+            scheduled_date: selectedDate.toISOString().split('T')[0],
+            scheduled_time: selectedTime,
+            duration: serviceDuration,
+            service_type: serviceDetails.serviceType,
+            location: serviceDetails.location,
+            shipping_address: serviceDetails.location,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          router.push({
+            pathname: "/payment/OrderSuccessScreen",
+            params: {
+              successType: "service",
+              orderId: data.data?.id || `SVC-${Date.now()}`,
+              itemTitle: serviceDetails.title,
+              itemPrice: `₦${totalPrice.toLocaleString()}`,
+              sellerId: serviceDetails.sellerId,
+              sellerName: serviceDetails.seller,
+              scheduledDate: selectedDate.toISOString().split('T')[0],
+              scheduledTime: selectedTime,
+              serviceDuration: serviceDuration,
+              orderType: 'service'
+            }
+          });
+        } else {
+          Alert.alert("Booking Failed", data.message || "Failed to book service");
+        }
+      } catch (error) {
+        console.error('Booking error:', error);
+        Alert.alert("Error", "Failed to book service. Please try again.");
+      } finally {
+        setIsProcessing(false);
+      }
+    }
+  };
 
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('en-US', {
@@ -249,119 +211,19 @@ const handleBookService = async () => {
     });
   };
 
-  // Safe service type for display
+  const getSellerInitials = (name: string) => {
+    return name?.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || 'S';
+  };
+
   const getServiceTypeDisplay = () => {
     return serviceDetails.serviceType || "Service";
   };
 
-  // Get pricing type display
   const getPricingTypeDisplay = () => {
     const pricingType = serviceDetails.pricingType || "fixed";
     if (pricingType === 'hourly') return '/hour';
     if (pricingType === 'negotiable') return 'Negotiable';
-    return 'Fixed Price';
-  };
-
-  // Render price input based on pricing type
-  const renderPriceSection = () => {
-    const pricingType = serviceDetails.pricingType || "fixed";
-    const totalPrice = calculateTotalPrice();
-    const hasSufficientBalance = userBalance ? userBalance.balance >= totalPrice : false;
-    
-    // In the renderPriceSection function, update the agreed price input:
-if (pricingType === 'negotiable') {
-  return (
-    <View style={styles.bookingField}>
-      <Text style={styles.fieldLabel}>Agreed Price (₦)</Text>
-      <View style={styles.priceInputContainer}>
-        <Text style={styles.currencySymbol}>₦</Text>
-        <TextInput
-          style={styles.priceInput}
-          placeholder="Enter agreed price"
-          keyboardType="numeric"
-          value={agreedPrice}
-          onChangeText={(text) => {
-            // Only allow numbers and decimal point
-            const cleaned = text.replace(/[^0-9.]/g, '');
-            setAgreedPrice(cleaned);
-          }}
-        />
-      </View>
-      <Text style={styles.inputHelper}>
-        Discuss and agree on a price with the service provider first
-      </Text>
-      
-      {/* Balance Check */}
-      {userBalance && agreedPrice && (
-        <View style={[
-          styles.balanceCheck,
-          hasSufficientBalance ? styles.sufficientBalance : styles.insufficientBalance
-        ]}>
-          <Ionicons 
-            name={hasSufficientBalance ? "checkmark-circle" : "warning"} 
-            size={16} 
-            color={hasSufficientBalance ? "#4CAF50" : "#ff6b35"} 
-          />
-          <Text style={styles.balanceText}>
-            Your balance: ₦{userBalance.balance.toLocaleString()} • 
-            {hasSufficientBalance ? " Sufficient" : " Insufficient"}
-          </Text>
-        </View>
-      )}
-    </View>
-  );
-} else {
-      // For fixed or hourly pricing, allow custom price input
-      return (
-        <View style={styles.bookingField}>
-          <Text style={styles.fieldLabel}>Service Price (₦)</Text>
-          <View style={styles.priceRow}>
-            <View style={styles.sellerPriceContainer}>
-              <Text style={styles.sellerPriceLabel}>Seller&apos;s Price:</Text>
-              <Text style={styles.sellerPrice}>
-                ₦{getPriceNumericValue().toLocaleString()} {getPricingTypeDisplay()}
-              </Text>
-            </View>
-            <View style={styles.customPriceContainer}>
-              <Text style={styles.customPriceLabel}>Your Offer:</Text>
-              <View style={styles.priceInputContainer}>
-                <Text style={styles.currencySymbol}>₦</Text>
-                <TextInput
-                  style={styles.priceInput}
-                  placeholder="Enter your price"
-                  keyboardType="numeric"
-                  value={customPrice}
-                  onChangeText={setCustomPrice}
-                />
-              </View>
-            </View>
-          </View>
-          <Text style={styles.inputHelper}>
-            {serviceDetails.pricingType === 'fixed' 
-              ? "You can enter a different price to negotiate with the seller" 
-              : "Hourly rate multiplied by duration"}
-          </Text>
-          
-          {/* Balance Check */}
-          {userBalance && (customPrice || serviceDetails.pricingType === 'hourly') && (
-            <View style={[
-              styles.balanceCheck,
-              hasSufficientBalance ? styles.sufficientBalance : styles.insufficientBalance
-            ]}>
-              <Ionicons 
-                name={hasSufficientBalance ? "checkmark-circle" : "warning"} 
-                size={16} 
-                color={hasSufficientBalance ? "#4CAF50" : "#ff6b35"} 
-              />
-              <Text style={styles.balanceText}>
-                Your balance: ₦{userBalance.balance.toLocaleString()} • 
-                {hasSufficientBalance ? " Sufficient" : " Insufficient"}
-              </Text>
-            </View>
-          )}
-        </View>
-      );
-    }
+    return 'Fixed';
   };
 
   const totalPrice = calculateTotalPrice();
@@ -370,276 +232,264 @@ if (pricingType === 'negotiable') {
   if (loading) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Loading...</Text>
+        <ActivityIndicator size="large" color="#185FA5" />
+        <Text style={styles.loadingText}>Loading service...</Text>
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Stack.Screen options={{ 
-        headerShown: false,
-        statusBarStyle: 'dark',
-        statusBarBackgroundColor: '#fff',
-      }} />
-      
-      <View style={styles.innerContainer}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={26} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Service Details</Text>
-          <View style={{ width: 26 }} />
-        </View>
+      <Stack.Screen options={{ headerShown: false, statusBarStyle: 'light' }} />
 
-        <ScrollView 
-          style={styles.scrollView} 
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-        >
-          {/* Service Image - Only show if available */}
+      <View style={styles.innerContainer}>
+        {/* Hero Section */}
+        <View style={styles.heroContainer}>
           {serviceDetails.image ? (
-            <Image 
-              source={serviceDetails.image} 
-              style={styles.serviceImage} 
-              resizeMode="cover" 
-            />
+            <Image source={serviceDetails.image} style={styles.heroImage} resizeMode="cover" />
           ) : (
-            <View style={styles.noImageContainer}>
-              <Ionicons name="briefcase-outline" size={80} color="#ccc" />
-              <Text style={styles.noImageText}>Service Image</Text>
+            <View style={styles.heroPlaceholder}>
+              <Ionicons name="briefcase-outline" size={72} color="rgba(255,255,255,0.25)" />
             </View>
           )}
+          <LinearGradient
+            colors={['rgba(0,0,0,0.45)', 'transparent']}
+            start={{ x: 0, y: 1 }}
+            end={{ x: 0, y: 0 }}
+            style={styles.heroGradient}
+          />
 
-          {/* Service Info */}
-          <View style={styles.section}>
-            <Text style={styles.serviceTitle}>{serviceDetails.title}</Text>
-            
-            <View style={styles.sellerInfo}>
-              <View style={styles.ratingContainer}>
-                <Ionicons name="star" size={16} color="#FFD700" />
-                <Text style={styles.ratingText}>{serviceDetails.rating}</Text>
-              </View>
-              <Text style={styles.sellerText}>By {serviceDetails.seller}</Text>
-            </View>
-
-            <View style={styles.detailsGrid}>
-              <View style={styles.detailItem}>
-                <Ionicons name="location-outline" size={16} color="#666" />
-                <Text style={styles.detailText}>{serviceDetails.location}</Text>
-              </View>
-              <View style={styles.detailItem}>
-                <Ionicons name="time-outline" size={16} color="#666" />
-                <Text style={styles.detailText}>{serviceDetails.experience}</Text>
-              </View>
-              <View style={styles.detailItem}>
-                <Ionicons name="business-outline" size={16} color="#666" />
-                <Text style={styles.detailText}>{getServiceTypeDisplay()}</Text>
-              </View>
-            </View>
-
-            <View style={styles.priceContainer}>
-              <Text style={styles.price}>
-                {serviceDetails.pricingType === 'negotiable' 
-                  ? 'Negotiable' 
-                  : `₦${getPriceNumericValue().toLocaleString()}`
-                }
-              </Text>
-              <Text style={styles.pricingType}>
-                {getPricingTypeDisplay()}
-              </Text>
-            </View>
+          {/* Top Bar */}
+          <View style={styles.topBar}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.glassBtn}>
+              <Ionicons name="arrow-back" size={20} color="#fff" />
+            </TouchableOpacity>
+            <Text style={styles.topBarTitle}>Service Details</Text>
+            <TouchableOpacity style={styles.glassBtn}>
+              <Ionicons name="share-outline" size={20} color="#fff" />
+            </TouchableOpacity>
           </View>
 
-          {/* Booking Section */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              {bookingStep === 1 ? "Select Date & Time" : "Confirm Booking"}
-            </Text>
+          {/* Category Badge */}
+          <View style={styles.categoryBadge}>
+            <Text style={styles.categoryBadgeText}>{getServiceTypeDisplay()}</Text>
+          </View>
+        </View>
 
+        {/* Bottom Sheet */}
+        <View style={styles.sheet}>
+          <View style={styles.dragPill} />
+
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+            {/* Price + Rating */}
+            <View style={styles.priceRow}>
+              <Text style={styles.price}>
+                ₦{getPriceNumericValue().toLocaleString()}
+                {serviceDetails.pricingType === 'hourly' && <Text style={styles.perHour}>/hr</Text>}
+              </Text>
+              <View style={styles.ratingPill}>
+                <Ionicons name="star" size={12} color="#EF9F27" />
+                <Text style={styles.ratingText}>{serviceDetails.rating}</Text>
+              </View>
+            </View>
+
+            <Text style={styles.productTitle}>{serviceDetails.title}</Text>
+
+            {/* Seller Row */}
+            <View style={styles.sellerRow}>
+              <View style={styles.sellerAvatar}>
+                <Text style={styles.sellerAvatarText}>{getSellerInitials(serviceDetails.seller)}</Text>
+              </View>
+              <Text style={styles.sellerText}>
+                {serviceDetails.seller}
+                <Text style={styles.sellerDot}> · </Text>
+                {serviceDetails.location}
+              </Text>
+            </View>
+
+            <View style={styles.divider} />
+
+            {/* Service Details Grid */}
+            <View style={styles.detailsGrid}>
+              <View style={styles.detailChip}>
+                <Ionicons name="time-outline" size={14} color="#185FA5" />
+                <Text style={styles.detailChipText}>{serviceDetails.experience}</Text>
+              </View>
+              <View style={styles.detailChip}>
+                <Ionicons name="pricetag-outline" size={14} color="#185FA5" />
+                <Text style={styles.detailChipText}>{getPricingTypeDisplay()}</Text>
+              </View>
+            </View>
+
+            {/* Description */}
+            <Text style={styles.sectionLabel}>About this service</Text>
+            <Text style={styles.description}>{serviceDetails.description}</Text>
+
+            <View style={styles.divider} />
+
+            {/* Booking Section */}
             {bookingStep === 1 ? (
               <>
                 {/* Price Input Section */}
-                {renderPriceSection()}
+                {serviceDetails.pricingType === 'negotiable' && (
+                  <>
+                    <Text style={styles.sectionLabel}>Agreed Price</Text>
+                    <View style={styles.priceInputContainer}>
+                      <Text style={styles.currencySymbol}>₦</Text>
+                      <TextInput
+                        style={styles.priceInput}
+                        placeholder="Enter agreed price"
+                        keyboardType="numeric"
+                        value={agreedPrice}
+                        onChangeText={(text) => setAgreedPrice(text.replace(/[^0-9.]/g, ''))}
+                        placeholderTextColor="#9CA3AF"
+                      />
+                    </View>
+                    <Text style={styles.inputHelper}>
+                      Discuss and agree on a price with the service provider first
+                    </Text>
+                  </>
+                )}
+
+                {(serviceDetails.pricingType === 'fixed' || serviceDetails.pricingType === 'hourly') && (
+                  <>
+                    <Text style={styles.sectionLabel}>Your Offer (Optional)</Text>
+                    <View style={styles.priceInputContainer}>
+                      <Text style={styles.currencySymbol}>₦</Text>
+                      <TextInput
+                        style={styles.priceInput}
+                        placeholder={`Seller's price: ${getPriceNumericValue().toLocaleString()}`}
+                        keyboardType="numeric"
+                        value={customPrice}
+                        onChangeText={setCustomPrice}
+                        placeholderTextColor="#9CA3AF"
+                      />
+                    </View>
+                    <Text style={styles.inputHelper}>
+                      Enter a different price to negotiate with the seller
+                    </Text>
+                  </>
+                )}
 
                 {/* Date Selection */}
-                <View style={styles.bookingField}>
-                  <Text style={styles.fieldLabel}>Select Date</Text>
-                  <TouchableOpacity 
-                    style={styles.dateTimeButton}
-                    onPress={() => setShowDatePicker(true)}
-                  >
-                    <Ionicons name="calendar-outline" size={20} color="#007AFF" />
-                    <Text style={styles.dateTimeText}>
-                      {formatDate(selectedDate)}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+                <Text style={styles.sectionLabel}>Select Date</Text>
+                <TouchableOpacity 
+                  style={styles.dateButton}
+                  onPress={() => setShowDatePicker(true)}
+                >
+                  <Ionicons name="calendar-outline" size={20} color="#185FA5" />
+                  <Text style={styles.dateText}>{formatDate(selectedDate)}</Text>
+                  <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+                </TouchableOpacity>
 
-                {/* Duration Selection (for hourly services only) */}
+                {/* Duration Selection (for hourly services) */}
                 {serviceDetails.pricingType === 'hourly' && (
-                  <View style={styles.bookingField}>
-                    <Text style={styles.fieldLabel}>Service Duration</Text>
-                    <View style={styles.durationOptions}>
+                  <>
+                    <Text style={styles.sectionLabel}>Duration</Text>
+                    <View style={styles.optionsContainer}>
                       {['1 hour', '2 hours', '3 hours', '4 hours', 'Full day'].map((duration) => (
                         <TouchableOpacity
                           key={duration}
-                          style={[
-                            styles.durationOption,
-                            serviceDuration === duration && styles.durationOptionSelected
-                          ]}
+                          style={[styles.optionChip, serviceDuration === duration && styles.optionChipActive]}
                           onPress={() => setServiceDuration(duration)}
                         >
-                          <Text style={[
-                            styles.durationText,
-                            serviceDuration === duration && styles.durationTextSelected
-                          ]}>
+                          <Text style={[styles.optionChipText, serviceDuration === duration && styles.optionChipTextActive]}>
                             {duration}
                           </Text>
                         </TouchableOpacity>
                       ))}
                     </View>
-                  </View>
+                  </>
                 )}
 
                 {/* Time Selection */}
-                <View style={styles.bookingField}>
-                  <Text style={styles.fieldLabel}>Select Time Slot</Text>
-                  <View style={styles.timeSlotsContainer}>
-                    {timeSlots.map((time) => (
-                      <TouchableOpacity
-                        key={time}
-                        style={[
-                          styles.timeSlot,
-                          selectedTime === time && styles.timeSlotSelected
-                        ]}
-                        onPress={() => handleTimeSelect(time)}
-                      >
-                        <Text style={[
-                          styles.timeSlotText,
-                          selectedTime === time && styles.timeSlotTextSelected
-                        ]}>
-                          {time}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
+                <Text style={styles.sectionLabel}>Select Time Slot</Text>
+                <View style={styles.optionsContainer}>
+                  {timeSlots.map((time) => (
+                    <TouchableOpacity
+                      key={time}
+                      style={[styles.optionChip, selectedTime === time && styles.optionChipActive]}
+                      onPress={() => handleTimeSelect(time)}
+                    >
+                      <Text style={[styles.optionChipText, selectedTime === time && styles.optionChipTextActive]}>
+                        {time}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
               </>
             ) : (
               /* Confirmation Step */
-              <View style={styles.confirmationSection}>
-                <View style={styles.bookingSummary}>
-                  <Text style={styles.summaryTitle}>Booking Summary</Text>
-                  
+              <>
+                <Text style={styles.sectionLabel}>Booking Summary</Text>
+                <View style={styles.summaryBox}>
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Date:</Text>
+                    <Text style={styles.summaryLabel}>Date</Text>
                     <Text style={styles.summaryValue}>{formatDate(selectedDate)}</Text>
                   </View>
-                  
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Time:</Text>
+                    <Text style={styles.summaryLabel}>Time</Text>
                     <Text style={styles.summaryValue}>{selectedTime}</Text>
                   </View>
-
                   {serviceDetails.pricingType === 'hourly' && (
                     <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Duration:</Text>
+                      <Text style={styles.summaryLabel}>Duration</Text>
                       <Text style={styles.summaryValue}>{serviceDuration}</Text>
                     </View>
                   )}
-
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Service:</Text>
+                    <Text style={styles.summaryLabel}>Service</Text>
                     <Text style={styles.summaryValue}>{serviceDetails.title}</Text>
                   </View>
-
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Provider:</Text>
+                    <Text style={styles.summaryLabel}>Provider</Text>
                     <Text style={styles.summaryValue}>{serviceDetails.seller}</Text>
                   </View>
-
-                  <View style={[styles.summaryRow, styles.totalRow]}>
-                    <Text style={styles.totalLabel}>Total Amount:</Text>
-                    <Text style={styles.totalPrice}>₦{totalPrice.toLocaleString()}</Text>
+                  <View style={[styles.summaryRow, styles.totalSummaryRow]}>
+                    <Text style={styles.totalSummaryLabel}>Total Amount</Text>
+                    <Text style={styles.totalSummaryValue}>₦{totalPrice.toLocaleString()}</Text>
                   </View>
-
-                  <View style={styles.balanceRow}>
-                    <Text style={styles.balanceLabel}>Your Balance:</Text>
-                    <Text style={[
-                      styles.balanceValue,
-                      !hasSufficientBalance && styles.insufficientBalance
-                    ]}>
-                      ₦{userBalance?.balance.toLocaleString() || '0'}
-                    </Text>
-                  </View>
-
-                  {!hasSufficientBalance && (
-                    <View style={styles.warningSection}>
-                      <Ionicons name="warning" size={16} color="#ff6b35" />
-                      <Text style={styles.warningText}>
-                        Insufficient balance. Please top up your wallet.
-                      </Text>
-                    </View>
-                  )}
                 </View>
 
-                <View style={styles.paymentNote}>
-                  <Ionicons name="lock-closed-outline" size={16} color="#34C759" />
+                <View style={styles.paymentNoteBox}>
+                  <Ionicons name="shield-checkmark" size={18} color="#34C759" />
                   <Text style={styles.paymentNoteText}>
-                    Payment will be held securely in escrow and released to the service provider only after you confirm service completion.
+                    Payment held securely in escrow until you confirm service completion
                   </Text>
                 </View>
-              </View>
+              </>
             )}
-          </View>
 
-          {/* Service Description */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Service Description</Text>
-            <Text style={styles.descriptionText}>
-              {serviceDetails.description}
-            </Text>
-          </View>
-
-          {/* Safety Tips */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Safety Tips</Text>
-            <View style={styles.tipsList}>
-              <View style={styles.tipItem}>
+            {/* Safety Tips */}
+            <View style={styles.divider} />
+            <Text style={styles.sectionLabel}>Safety Tips</Text>
+            <View style={styles.tipsContainer}>
+              <View style={styles.tipRow}>
                 <Ionicons name="shield-checkmark-outline" size={16} color="#34C759" />
-                <Text style={styles.tipText}>Payment is protected and released only after service completion</Text>
+                <Text style={styles.tipText}>Payment protected - released only after service completion</Text>
               </View>
-              <View style={styles.tipItem}>
-                <Ionicons name="document-text-outline" size={16} color="#34C759" />
+              <View style={styles.tipRow}>
+                <Ionicons name="chatbubbles-outline" size={16} color="#34C759" />
                 <Text style={styles.tipText}>Keep communication within the app for your safety</Text>
               </View>
-              <View style={styles.tipItem}>
+              <View style={styles.tipRow}>
                 <Ionicons name="star-outline" size={16} color="#34C759" />
                 <Text style={styles.tipText}>Rate your experience after service completion</Text>
               </View>
             </View>
-          </View>
 
-          {/* Bottom padding for safe area */}
-          <View style={styles.bottomPadding} />
-        </ScrollView>
+            <View style={styles.bottomPadding} />
+          </ScrollView>
+        </View>
 
-        {/* Booking Footer */}
-        <SafeAreaView edges={['bottom']} style={styles.bookingFooterWrapper}>
-          <View style={styles.bookingFooter}>
-            <View style={styles.priceFooter}>
+        {/* Footer */}
+        <SafeAreaView edges={['bottom']} style={styles.footerWrapper}>
+          <View style={styles.footer}>
+            <View style={styles.footerLeft}>
               <Text style={styles.footerPrice}>₦{totalPrice.toLocaleString()}</Text>
-              <Text style={styles.footerPricingType}>
-                {serviceDetails.pricingType === 'hourly' ? `for ${serviceDuration}` : 'total'}
-              </Text>
+              <Text style={styles.footerTotal}>Total</Text>
               {userBalance && (
-                <Text style={[
-                  styles.footerBalance,
-                  !hasSufficientBalance && styles.insufficientFooterBalance
-                ]}>
+                <Text style={[styles.footerBalance, !hasSufficientBalance && styles.insufficientFooterBalance]}>
                   Balance: ₦{userBalance.balance.toLocaleString()}
                 </Text>
               )}
@@ -658,19 +508,10 @@ if (pricingType === 'negotiable') {
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Text style={styles.bookButtonText}>
-                  {bookingStep === 1 ? "Continue to Book" : "Confirm Booking"}
+                  {bookingStep === 1 ? "Continue" : "Confirm Booking"}
                 </Text>
               )}
             </TouchableOpacity>
-
-            {!hasSufficientBalance && (
-              <TouchableOpacity 
-                style={styles.topUpButton}
-                onPress={() => router.push("/wallet/DepositScreen")}
-              >
-                <Text style={styles.topUpText}>Top Up</Text>
-              </TouchableOpacity>
-            )}
           </View>
         </SafeAreaView>
 
@@ -692,7 +533,7 @@ if (pricingType === 'negotiable') {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: '#0f1923',
   },
   innerContainer: {
     flex: 1,
@@ -701,455 +542,430 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#F8FAFC',
+    gap: 12,
   },
   loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#666',
+    fontSize: 15,
+    color: '#6B7280',
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-    marginTop: isIOS ? 0 : 5,
+  
+  // Hero Section
+  heroContainer: {
+    height: 270,
+    position: 'relative',
+    backgroundColor: '#1a1a2e',
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: '#000',
+  heroImage: {
+    width: '100%',
+    height: '100%',
   },
-  scrollView: {
+  heroPlaceholder: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#1a1a2e',
+  },
+  heroGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 140,
+  },
+  topBar: {
+    position: 'absolute',
+    top: statusBarHeight + 8,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+  },
+  glassBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  topBarTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
+    letterSpacing: 0.1,
+  },
+  categoryBadge: {
+    position: 'absolute',
+    bottom: 18,
+    left: 16,
+    backgroundColor: 'rgba(24,95,165,0.8)',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderWidth: 0.5,
+    borderColor: 'rgba(181,212,244,0.35)',
+  },
+  categoryBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#B5D4F4',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+
+  // Bottom Sheet
+  sheet: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    marginTop: -22,
+    paddingHorizontal: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  dragPill: {
+    width: 36,
+    height: 4,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 20,
   },
   scrollContent: {
-    paddingBottom: 30,
+    paddingBottom: 20,
   },
-  // Service Image or Placeholder
-  serviceImage: {
-    width: "100%",
-    height: 200,
-    backgroundColor: "#f0f0f0",
-  },
-  noImageContainer: {
-    width: "100%",
-    height: 200,
-    backgroundColor: "#f8f9fa",
-    justifyContent: "center",
-    alignItems: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-  },
-  noImageText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: "#999",
-    fontWeight: "500",
-  },
-  section: {
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-  },
-  serviceTitle: {
-    fontSize: 22,
-    fontWeight: "700",
-    marginBottom: 8,
-    color: "#111",
-  },
-  sellerInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  ratingContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFF9E6",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginRight: 12,
-  },
-  ratingText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#E6B400",
-    marginLeft: 4,
-  },
-  sellerText: {
-    fontSize: 16,
-    color: "#666",
-    fontWeight: "500",
-  },
-  detailsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-    marginBottom: 16,
-  },
-  detailItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f8f9fa",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  detailText: {
-    fontSize: 12,
-    color: "#666",
-    marginLeft: 6,
-    fontWeight: "500",
-  },
-  priceContainer: {
-    flexDirection: "row",
-    alignItems: "baseline",
-  },
-  price: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#007AFF",
-    marginRight: 6,
-  },
-  pricingType: {
-    fontSize: 16,
-    color: "#666",
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginBottom: 16,
-    color: "#111",
-  },
-  bookingField: {
-    marginBottom: 24,
-  },
-  fieldLabel: {
-    fontSize: 16,
-    fontWeight: "500",
-    marginBottom: 12,
-    color: "#333",
-  },
-  dateTimeButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f8f9ff",
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#007AFF",
-    borderStyle: "dashed",
-  },
-  dateTimeText: {
-    fontSize: 16,
-    color: "#007AFF",
-    fontWeight: "500",
-    marginLeft: 12,
-  },
-  // Price Input Styles
+
+  // Price Row
   priceRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  price: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#185FA5',
+    letterSpacing: -0.5,
+  },
+  perHour: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  ratingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 0.5,
+    borderColor: '#E5E7EB',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  ratingText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  productTitle: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: '#111827',
+    lineHeight: 26,
+    marginBottom: 10,
+  },
+
+  // Seller Row
+  sellerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  sellerAvatar: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#E6F1FB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sellerAvatarText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#185FA5',
+  },
+  sellerText: {
+    fontSize: 13,
+    color: '#6B7280',
+  },
+  sellerDot: {
+    color: '#D1D5DB',
+  },
+
+  // Divider
+  divider: {
+    height: 0.5,
+    backgroundColor: '#F0F0F0',
+    marginVertical: 18,
+  },
+
+  // Section Label
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#9CA3AF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
     marginBottom: 12,
   },
-  sellerPriceContainer: {
-    flex: 1,
-    marginRight: 10,
+
+  // Details Grid
+  detailsGrid: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 18,
   },
-  sellerPriceLabel: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 4,
-  },
-  sellerPrice: {
-    fontSize: 16,
-    color: "#007AFF",
-    fontWeight: "600",
-  },
-  customPriceContainer: {
-    flex: 1,
-    marginLeft: 10,
-  },
-  customPriceLabel: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 4,
-  },
-  priceInputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#007AFF",
-    borderRadius: 8,
+  detailChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#E6F1FB',
     paddingHorizontal: 12,
-    backgroundColor: "#f8f9ff",
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  detailChipText: {
+    fontSize: 12,
+    color: '#185FA5',
+    fontWeight: '500',
+  },
+
+  // Description
+  description: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 22,
+  },
+
+  // Price Input
+  priceInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 0.5,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#FAFAFA',
+    marginBottom: 8,
   },
   currencySymbol: {
     fontSize: 18,
-    fontWeight: "600",
-    color: "#007AFF",
+    fontWeight: '600',
+    color: '#185FA5',
     marginRight: 8,
   },
   priceInput: {
     flex: 1,
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#000",
-    paddingVertical: 10,
-    minHeight: 40,
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#111827',
+    paddingVertical: 12,
   },
   inputHelper: {
-    fontSize: 12,
-    color: "#666",
-    marginTop: 6,
-    fontStyle: "italic",
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginBottom: 18,
   },
-  // Balance Check
-  balanceCheck: {
+
+  // Date Button
+  dateButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
-    borderRadius: 8,
-    marginTop: 10,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 0.5,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 18,
+  },
+  dateText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#111827',
+    marginLeft: 12,
+  },
+
+  // Options
+  optionsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
+    marginBottom: 18,
   },
-  sufficientBalance: {
-    backgroundColor: '#e8f5e8',
+  optionChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 0.5,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#fff',
   },
-  insufficientBalance: {
-    backgroundColor: '#ffe6e6',
-    color: '#ff6b35',
+  optionChipActive: {
+    backgroundColor: '#185FA5',
+    borderColor: '#185FA5',
   },
-  balanceText: {
-    fontSize: 12,
+  optionChipText: {
+    fontSize: 13,
+    color: '#6B7280',
     fontWeight: '500',
   },
-  // Duration Options
-  durationOptions: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
+  optionChipTextActive: {
+    color: '#fff',
   },
-  durationOption: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#f1f1f1",
-    borderRadius: 8,
-  },
-  durationOptionSelected: {
-    backgroundColor: "#007AFF",
-  },
-  durationText: {
-    fontSize: 14,
-    color: "#666",
-    fontWeight: "500",
-  },
-  durationTextSelected: {
-    color: "#fff",
-  },
-  timeSlotsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  timeSlot: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#f1f1f1",
-    borderRadius: 8,
-    minWidth: 80,
-    alignItems: "center",
-  },
-  timeSlotSelected: {
-    backgroundColor: "#007AFF",
-  },
-  timeSlotText: {
-    fontSize: 14,
-    color: "#666",
-    fontWeight: "500",
-  },
-  timeSlotTextSelected: {
-    color: "#fff",
-  },
-  confirmationSection: {
-    gap: 20,
-  },
-  bookingSummary: {
-    backgroundColor: "#f8f9ff",
+
+  // Summary Box
+  summaryBox: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 14,
+    borderWidth: 0.5,
+    borderColor: '#E5E7EB',
     padding: 16,
-    borderRadius: 12,
-  },
-  summaryTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginBottom: 16,
-    color: "#111",
+    marginBottom: 18,
   },
   summaryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 12,
   },
   summaryLabel: {
-    fontSize: 14,
-    color: "#666",
-    fontWeight: "500",
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '500',
   },
   summaryValue: {
-    fontSize: 14,
-    color: "#333",
-    fontWeight: "600",
+    fontSize: 13,
+    color: '#111827',
+    fontWeight: '600',
   },
-  totalRow: {
-    borderTopWidth: 1,
-    borderTopColor: "#e0e0e0",
+  totalSummaryRow: {
+    borderTopWidth: 0.5,
+    borderTopColor: '#E5E7EB',
     paddingTop: 12,
     marginTop: 4,
   },
-  totalLabel: {
-    fontSize: 16,
-    color: "#111",
-    fontWeight: "600",
+  totalSummaryLabel: {
+    fontSize: 15,
+    color: '#111827',
+    fontWeight: '700',
   },
-  totalPrice: {
+  totalSummaryValue: {
     fontSize: 18,
-    color: "#007AFF",
-    fontWeight: "700",
+    color: '#185FA5',
+    fontWeight: '700',
   },
-  balanceRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 8,
-  },
-  balanceLabel: {
-    fontSize: 14,
-    color: "#666",
-  },
-  balanceValue: {
-    fontSize: 14,
-    color: "#4CAF50",
-    fontWeight: "600",
-  },
-  warningSection: {
+
+  // Payment Note
+  paymentNoteBox: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff3cd',
-    padding: 10,
-    borderRadius: 8,
-    marginTop: 10,
-    gap: 8,
-  },
-  warningText: {
-    color: '#856404',
-    fontSize: 12,
-    flex: 1,
-    lineHeight: 16,
-  },
-  paymentNote: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
-    padding: 16,
-    backgroundColor: "#f0f9f0",
-    borderRadius: 8,
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 18,
   },
   paymentNoteText: {
-    fontSize: 12,
-    color: "#2E7D32",
     flex: 1,
-    lineHeight: 16,
+    fontSize: 12,
+    color: '#166534',
+    lineHeight: 18,
   },
-  descriptionText: {
-    fontSize: 14,
-    color: "#666",
-    lineHeight: 20,
-  },
-  tipsList: {
+
+  // Tips Container
+  tipsContainer: {
     gap: 12,
   },
-  tipItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
+  tipRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
   },
   tipText: {
-    fontSize: 12,
-    color: "#666",
     flex: 1,
-    lineHeight: 16,
+    fontSize: 12,
+    color: '#6B7280',
+    lineHeight: 18,
   },
-  bookingFooterWrapper: {
-    backgroundColor: "#fff",
-    borderTopWidth: 1,
-    borderTopColor: "#f0f0f0",
+
+  // Footer
+  footerWrapper: {
+    backgroundColor: '#fff',
+    borderTopWidth: 0.5,
+    borderTopColor: '#E5E7EB',
   },
-  bookingFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: "#fff",
   },
-  priceFooter: {
+  footerLeft: {
     flex: 1,
   },
   footerPrice: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#007AFF",
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#185FA5',
   },
-  footerPricingType: {
-    fontSize: 12,
-    color: "#666",
+  footerTotal: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 2,
   },
   footerBalance: {
     fontSize: 11,
-    color: "#4CAF50",
+    color: '#4CAF50',
     marginTop: 2,
   },
   insufficientFooterBalance: {
-    color: "#ff6b35",
+    color: '#E24B4A',
   },
   bookButton: {
-    backgroundColor: "#007AFF",
-    paddingHorizontal: 24,
+    backgroundColor: '#185FA5',
+    paddingHorizontal: 28,
     paddingVertical: 14,
     borderRadius: 12,
-    marginLeft: 16,
-    minWidth: 150,
+    minWidth: 140,
     alignItems: 'center',
     justifyContent: 'center',
   },
   disabledButton: {
-    backgroundColor: "#ccc",
+    backgroundColor: '#D1D5DB',
   },
   processingButton: {
     opacity: 0.8,
   },
   bookButtonText: {
-    color: "#fff",
+    color: '#fff',
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: '600',
   },
-  topUpButton: {
-    backgroundColor: "#ff6b35",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginLeft: 8,
-  },
-  topUpText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "600",
-  },
+
   bottomPadding: {
     height: Platform.OS === 'ios' ? 40 : 20,
   },

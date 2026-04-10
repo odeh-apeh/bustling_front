@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, use } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import { Stack, useRouter } from "expo-router";
 import {
   View,
@@ -11,29 +11,31 @@ import {
   Easing,
   Alert,
   Platform,
+  StatusBar,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons, Feather, MaterialIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { BASE_URL, CoreService } from "@/helpers/core-service";
 import { useToast } from "@/contexts/toast-content";
 
 const { width, height } = Dimensions.get("window");
-
-// Check if device is iOS
 const isIOS = Platform.OS === 'ios';
+const statusBarHeight = isIOS ? 20 : StatusBar.currentHeight || 0;
 
-// Colors
 const COLORS = {
-  primary: '#0066CC', // Deeper blue
-  primaryLight: '#E6F2FF',
+  primary: '#185FA5',
+  primaryDark: '#0F4A7A',
+  primaryLight: '#E6F1FB',
   secondary: '#4CAF50',
-  accent: '#FF9800',
-  background: '#F8FAFC', // Slightly off-white background
+  accent: '#EF9F27',
+  background: '#F8FAFC',
   white: '#FFFFFF',
-  text: '#333333',
-  textLight: '#666666',
-  border: '#E1E8F0',
+  text: '#111827',
+  textLight: '#6B7280',
+  border: '#E5E7EB',
 };
 
 interface User {
@@ -94,188 +96,152 @@ export default function HomeScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const service:CoreService = new CoreService();
-  const {showToast, isMarketVisible, setMarketVisible} = useToast();
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const service: CoreService = new CoreService();
+  const { showToast, isMarketVisible, setMarketVisible } = useToast();
 
-  // Fetch user profile
   const fetchUserProfile = async () => {
-  try {
-    setLoading(true);
-    console.log("Starting profile fetch...");
-    
-    // Test 1: Call balance endpoint directly
-    const balanceResponse = await fetch(`${BASE_URL}/api/wallet/balance`, {
-      method: 'GET',
-      credentials: 'include', // This is CRITICAL for sessions
-      headers: {
-        'Accept': 'application/json',
-        'Cache-Control': 'no-cache'
-      }
-    });
-
-    
-    
-    console.log("Balance response status:", balanceResponse.status);
-    console.log("Balance response headers:", balanceResponse.headers);
-    
-    const balanceText = await balanceResponse.text();
-    console.log("Balance response text:", balanceText);
-    
-    let balanceData;
     try {
-      balanceData = JSON.parse(balanceText);
-    } catch (e) {
-      console.error("Failed to parse balance JSON:", e);
-      balanceData = { balance: 0 };
-    }
-    
-    console.log("Parsed balance data:", balanceData);
-    
-    // Test 2: Call profile endpoint
-    const profileResponse = await fetch(`${BASE_URL}/api/user/profile`, {
-      method: 'GET',
-      credentials: 'include',
-      headers: {
-        'Accept': 'application/json',
-        'Cache-Control': 'no-cache'
-      }
-    });
-    
-    console.log("Profile response status:", profileResponse.status);
-    const profileText = await profileResponse.text();
-    console.log("Profile response text:", profileText);
-    
-    let profileData;
-    try {
-      profileData = JSON.parse(profileText);
-    } catch (e) {
-      console.error("Failed to parse profile JSON:", e);
-      profileData = { success: false };
-    }
-    
-    if (profileData.success) {
-      // Combine both responses
-      const userData = {
-        user: profileData.user,
-        wallet: {
-          ...(profileData.wallet || {}),
-          balance: balanceData.balance || 0
-        }
-      };
+      setLoading(true);
       
-      console.log("Setting user state with:", userData);
-      setUser(userData);
-    } else {
-      console.log("Profile fetch failed:", profileData.message);
-      Alert.alert("Session Expired", "Please login again");
-      router.replace("/login/LoginScreen");
-    }
-  } catch (error: any) {
-    console.error("Failed to load profile:", error);
-    console.error("Error details:", error.message, error.stack);
-    Alert.alert("Error", "Failed to load user data");
-  } finally {
-    setLoading(false);
-    console.log("Profile fetch completed");
-  }
-};
-  
-    const fetchNotifications = async() => {
-          try{
-            const res = await service.send(`/api/notifications/get-notifications`,{userId:user?.user.id});
-            if(res.success && Array.isArray(res.data)){
-              setNotifications(res.data);
-              console.log("Fetched notifications:", res.data);
-            }
-          }catch(e:any){
-            showToast("Unable to get notifications", 'error');
-          }
+      const balanceResponse = await fetch(`${BASE_URL}/api/wallet/balance`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache'
         }
-
-    // Reset animation when modal becomes visible
-useEffect(() => {
-  if (isMarketVisible) {
-    slideAnim.setValue(0);
-    Animated.timing(slideAnim, {
-      toValue: 1,
-      duration: 400,
-      easing: Easing.out(Easing.ease),
-      useNativeDriver: true,
-    }).start();
-  }
-}, [isMarketVisible]);
-  
-  useEffect(() => {
-    fetchUserProfile();
-  }, []);
-
-  useEffect(() => {
-    if(user){
-      fetchNotifications();
-    }
-  }, [user]);
-
-  // Auto scroll for about section
-  useEffect(() => {
-    let index = 0;
-    const interval = setInterval(() => {
-      const nextIndex = (index + 1) % aboutSlides.length;
-      
-      scrollRef.current?.scrollTo({
-        x: width * 0.8 * nextIndex,
-        animated: true,
       });
       
-      index = nextIndex;
-      setCurrentIndex(nextIndex);
-    }, 5000);
+      const balanceText = await balanceResponse.text();
+      let balanceData;
+      try {
+        balanceData = JSON.parse(balanceText);
+      } catch (e) {
+        balanceData = { balance: 0 };
+      }
+      
+      const profileResponse = await fetch(`${BASE_URL}/api/user/profile`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache'
+        }
+      });
+      
+      const profileText = await profileResponse.text();
+      let profileData;
+      try {
+        profileData = JSON.parse(profileText);
+      } catch (e) {
+        profileData = { success: false };
+      }
+      
+      if (profileData.success) {
+        const userData = {
+          user: profileData.user,
+          wallet: {
+            ...(profileData.wallet || {}),
+            balance: balanceData.balance || 0
+          }
+        };
+        setUser(userData);
+      } else {
+        showToast( "Session expired. Please login again",'error');
+        router.replace("/login/LoginScreen");
+      }
+    } catch (error: any) {
+      console.error("Failed to load profile:", error);
+      showToast("Failed to load user data",'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const fetchNotifications = async() => {
+    try {
+      const res = await service.send(`/api/notifications/get-notifications`, { userId: user?.user.id });
+      if (res.success && Array.isArray(res.data)) {
+        setNotifications(res.data);
+      }
+    } catch(e: any) {
+      showToast("Unable to get notifications", 'error');
+    }
+  }
 
-    return () => clearInterval(interval);
-  }, []);
-
-  const toggleMarket = () => {
-  if (isMarketVisible) {
-    // Animate out when closing
-    Animated.timing(slideAnim, {
-      toValue: 0,
-      duration: 300,
-      easing: Easing.in(Easing.ease),
-      useNativeDriver: true,
-    }).start(() => {
-      setMarketVisible(false);
-    });
-  } else {
-    // Animate in when opening
-    setMarketVisible(true);
-    // Small delay to ensure modal is rendered before animating
-    setTimeout(() => {
+  useEffect(() => {
+    if (isMarketVisible) {
+      slideAnim.setValue(0);
       Animated.timing(slideAnim, {
         toValue: 1,
         duration: 400,
         easing: Easing.out(Easing.ease),
         useNativeDriver: true,
       }).start();
-    }, 10);
-  }
-};
+    }
+  }, [isMarketVisible]);
+  
+  useEffect(() => {
+    fetchUserProfile();
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      fetchNotifications();
+    }
+  }, [user]);
+
+  useEffect(() => {
+    let index = 0;
+    const interval = setInterval(() => {
+      const nextIndex = (index + 1) % aboutSlides.length;
+      scrollRef.current?.scrollTo({
+        x: width * 0.8 * nextIndex,
+        animated: true,
+      });
+      index = nextIndex;
+      setCurrentIndex(nextIndex);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const toggleMarket = () => {
+    if (isMarketVisible) {
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 300,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }).start(() => {
+        setMarketVisible(false);
+      });
+    } else {
+      setMarketVisible(true);
+      setTimeout(() => {
+        Animated.timing(slideAnim, {
+          toValue: 1,
+          duration: 400,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }).start();
+      }, 10);
+    }
+  };
 
   const handleMarketAction = (path: string) => {
-  // Animate out first
-  Animated.timing(slideAnim, {
-    toValue: 0,
-    duration: 250,
-    easing: Easing.in(Easing.ease),
-    useNativeDriver: true,
-  }).start(() => {
-    // After animation completes, close modal and navigate
-    setMarketVisible(false);
-    // Small delay to ensure state updates before navigation
-    setTimeout(() => {
-      router.push(path as any);
-    }, 50);
-  });
-};
+    Animated.timing(slideAnim, {
+      toValue: 0,
+      duration: 250,
+      easing: Easing.in(Easing.ease),
+      useNativeDriver: true,
+    }).start(() => {
+      setMarketVisible(false);
+      setTimeout(() => {
+        router.push(path as any);
+      }, 50);
+    });
+  };
 
   const handleLogout = async () => {
     try {
@@ -283,119 +249,124 @@ useEffect(() => {
         method: 'POST',
         credentials: 'include',
       });
-      
       setUser(null);
       showToast("Logged out successfully");
       router.replace("/login/LoginScreen");
-    } catch (error:any) {
-      showToast(error.message,'error');
+    } catch (error: any) {
+      showToast(error.message, 'error');
     }
+  };
+
+  const getSellerInitials = (name: string) => {
+    return name?.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || 'U';
   };
 
   if (loading) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
-        <View style={styles.loadingContent}>
-          <View style={styles.loadingSpinner}>
-            <Ionicons name="logo-slack" size={50} color={COLORS.primary} />
-          </View>
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.loadingText}>Loading...</Text>
       </SafeAreaView>
     );
   }
 
   return (
     <>
+    <StatusBar backgroundColor={'#12569a'} barStyle={'default'}></StatusBar>
       <Stack.Screen options={{ 
         headerShown: false,
         statusBarStyle: 'light',
       }} />
-      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-        
+      
+      <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.innerContainer}>
-          
-          {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity style={styles.profileButton}>
-              <View style={styles.profileIcon}>
-                <Text style={styles.profileInitial}>
-                  {user?.user.name?.charAt(0) || 'U'}
-                </Text>
-              </View>
-            </TouchableOpacity>
-            
-            <View style={styles.headerIcons}>
-              { /*<TouchableOpacity 
-                style={styles.headerIconButton}
-                onPress={() => router.push("/transactions/TransactionHistoryScreen")}
-              >
-                <Ionicons name="time-outline" size={22} color={COLORS.text} />
-              </TouchableOpacity> */}
-              
-              <TouchableOpacity 
-                style={styles.headerIconButton}
-                onPress={() => router.push("/notifications/NotificationsScreen")}
-              >
-                <Ionicons name="notifications-outline" size={22} color={COLORS.text} />
-                {notifications.length > 0 && <View style={styles.notificationBadge}>
-                  <Text style={styles.badgeText}>{notifications.length > 0 ? notifications.length : ''}</Text>
-                </View>}
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.headerIconButton}
-                onPress={handleLogout}
-              >
-                <Ionicons name="log-out-outline" size={22} color={COLORS.text} />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <ScrollView 
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
+          {/* Hero Section with Gradient */}
+          <LinearGradient
+            colors={[COLORS.primary, COLORS.primaryDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.heroSection}
           >
-            {/* Welcome & Balance Card - COMPACT SIZE */}
+            {/* Top Bar */}
+            <View style={styles.topBar}>
+              <View style={{
+                display:'flex',
+                justifyContent:'center',
+                alignItems:'center',
+                gap:'10',
+                flexDirection: 'row',
+              }}>
+                <TouchableOpacity style={styles.glassBtn}>
+                <View style={styles.profileIcon}>
+                  <Text style={styles.profileInitial}>
+                    {user?.user.name?.charAt(0) || 'U'} 
+                    
+                  </Text>
+                </View>
+              </TouchableOpacity>
+              <Text style={styles.topBarTitle}>Bustling</Text>
+
+              </View>
+              
+              
+              
+              <View style={styles.headerIcons}>
+                <TouchableOpacity 
+                  style={styles.glassBtnSmall}
+                  onPress={() => router.push("/notifications/NotificationsScreen")}
+                >
+                  <Ionicons name="notifications-outline" size={20} color="#fff" />
+                  {notifications.length > 0 && (
+                    <View style={styles.notificationBadge}>
+                      <Text style={styles.badgeText}>{notifications.length}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.glassBtnSmall}
+                  onPress={handleLogout}
+                >
+                  <Ionicons name="log-out-outline" size={20} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Balance Card */}
             <View style={styles.balanceCard}>
               <View style={styles.balanceLeft}>
                 <Text style={styles.welcomeText}>
                   Hello, <Text style={styles.userName}>{user?.user.name || 'User'}</Text>
                 </Text>
-                <View>
-                  <Text style={styles.balanceLabel}>Balance</Text>
-                  <Text style={styles.balanceAmount}>
-                    ₦{user?.wallet.balance?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}
-                  </Text>
-                </View>
+                <Text style={styles.balanceLabel}>Total Balance</Text>
+                <Text style={styles.balanceAmount}>
+                  ₦{user?.wallet.balance?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}
+                </Text>
               </View>
               
               <View style={styles.balanceRight}>
-                <Text style={styles.walletLabel}>Wallet Address</Text>
-                <TouchableOpacity style={styles.walletIdButton}>
-                  <Text style={styles.walletIdText}>
-                    {user?.user.phone ? `${user.user.phone.slice(0, 4)}****${user.user.phone.slice(-2)}` : 'N/A'}
-                  </Text>
-                  <Feather
-                    name="copy"
-                    size={14}
-                    color={COLORS.white}
-                    style={{ marginLeft: 6 }}
-                  />
-                </TouchableOpacity>
+                <View style={styles.walletCard}>
+                  <Ionicons name="wallet-outline" size={20} color="rgba(255,255,255,0.8)" />
+                  <Text style={styles.walletLabel}>Wallet</Text>
+                </View>
               </View>
             </View>
+          </LinearGradient>
 
-            {/* Quick Actions */}
-            <View style={styles.sectionContainer}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Quick Actions</Text>
-              </View>
-              
-              <View style={styles.actionsCard}>
+          {/* Main Content - Bottom Sheet Style */}
+          <View style={styles.contentSheet}>
+            <View style={styles.dragPill} />
+
+            <ScrollView 
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.scrollContent}
+            >
+              {/* Quick Actions */}
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>Quick Actions</Text>
                 <View style={styles.actionsGrid}>
                   <TouchableOpacity 
-                    style={styles.actionButton}
+                    style={styles.actionCard}
                     onPress={() => router.push("/wallet/DepositScreen" as any)}
                   >
                     <View style={[styles.actionIcon, { backgroundColor: COLORS.primaryLight }]}>
@@ -405,7 +376,7 @@ useEffect(() => {
                   </TouchableOpacity>
 
                   <TouchableOpacity 
-                    style={styles.actionButton}
+                    style={styles.actionCard}
                     onPress={() => router.push("/wallet/WithdrawalScreen" as any)}
                   >
                     <View style={[styles.actionIcon, { backgroundColor: COLORS.primaryLight }]}>
@@ -415,7 +386,7 @@ useEffect(() => {
                   </TouchableOpacity>
 
                   <TouchableOpacity 
-                    style={styles.actionButton}
+                    style={styles.actionCard}
                     onPress={toggleMarket}
                   >
                     <View style={[styles.actionIcon, { backgroundColor: COLORS.primaryLight }]}>
@@ -425,7 +396,7 @@ useEffect(() => {
                   </TouchableOpacity>
 
                   <TouchableOpacity 
-                    style={styles.actionButton}
+                    style={styles.actionCard}
                     onPress={() => router.push("/transfer/TransferScreen")}
                   >
                     <View style={[styles.actionIcon, { backgroundColor: COLORS.primaryLight }]}>
@@ -435,15 +406,13 @@ useEffect(() => {
                   </TouchableOpacity>
                 </View>
               </View>
-            </View>
 
-            {/* About Errandly (Carousel) */}
-            <View style={styles.sectionContainer}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Why Choose Bustling</Text>
-              </View>
-              
-              <View style={styles.carouselCard}>
+              <View style={styles.divider} />
+
+              {/* Why Choose Bustling */}
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>Why Choose Bustling</Text>
+                
                 <ScrollView
                   horizontal
                   pagingEnabled
@@ -471,7 +440,7 @@ useEffect(() => {
                     
                     const scale = scrollX.interpolate({
                       inputRange,
-                      outputRange: [0.9, 1, 0.9],
+                      outputRange: [0.92, 1, 0.92],
                       extrapolate: 'clamp',
                     });
 
@@ -483,7 +452,7 @@ useEffect(() => {
                           { opacity, transform: [{ scale }] },
                         ]}
                       >
-                        <View style={styles.carouselContent}>
+                        <View style={styles.carouselCard}>
                           <View style={styles.carouselIconContainer}>
                             <Ionicons name={slide.icon} size={32} color={COLORS.primary} />
                           </View>
@@ -508,219 +477,159 @@ useEffect(() => {
                   ))}
                 </View>
               </View>
-            </View>
 
-            {/* Promotions/Featured Section */}
-            <View style={styles.sectionContainer}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Featured Services</Text>
-              </View>
-              
-              <View style={styles.featuredCard}>
-                <View style={styles.featuredItem}>
-                  <View style={styles.featuredIcon}>
-                    <MaterialIcons name="delivery-dining" size={28} color={COLORS.white} />
+              <View style={styles.divider} />
+
+              {/* Featured Services */}
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>Featured Services</Text>
+                
+                <View style={styles.featuredCard}>
+                  <View style={styles.featuredItem}>
+                    <View style={[styles.featuredIcon, { backgroundColor: COLORS.primary }]}>
+                      <MaterialIcons name="delivery-dining" size={24} color={COLORS.white} />
+                    </View>
+                    <View style={styles.featuredContent}>
+                      <Text style={styles.featuredTitle}>Express Delivery</Text>
+                      <Text style={styles.featuredText}>Same-day delivery available</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={COLORS.textLight} />
                   </View>
-                  <View style={styles.featuredContent}>
-                    <Text style={styles.featuredTitle}>Express Delivery</Text>
-                    <Text style={styles.featuredText}>Same-day delivery available</Text>
+                  
+                  <View style={styles.featuredDivider} />
+                  
+                  <View style={styles.featuredItem}>
+                    <View style={[styles.featuredIcon, { backgroundColor: COLORS.secondary }]}>
+                      <Ionicons name="shield-checkmark" size={24} color={COLORS.white} />
+                    </View>
+                    <View style={styles.featuredContent}>
+                      <Text style={styles.featuredTitle}>Secure Payment</Text>
+                      <Text style={styles.featuredText}>100% escrow protected</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={COLORS.textLight} />
                   </View>
                 </View>
-                
-                <View style={styles.featuredDivider} />
-                
-                <View style={styles.featuredItem}>
-                  <View style={[styles.featuredIcon, { backgroundColor: COLORS.secondary }]}>
-                    <Ionicons name="shield-checkmark" size={28} color={COLORS.white} />
-                  </View>
-                  <View style={styles.featuredContent}>
-                    <Text style={styles.featuredTitle}>Secure Payment</Text>
-                    <Text style={styles.featuredText}>100% escrow protected</Text>
-                  </View>
-                </View>
               </View>
-            </View>
 
-            {/* Bottom padding */}
-            <View style={styles.bottomPadding} />
-          </ScrollView>
+              <View style={styles.bottomPadding} />
+            </ScrollView>
+          </View>
 
           {/* Bottom Navigation */}
-          {isIOS ? (
-            <BlurView intensity={90} style={styles.bottomNavWrapper}>
-              <View style={styles.bottomNav}>
-                <TouchableOpacity style={styles.bottomNavButton}>
-                  <Ionicons name="home" size={24} color={!isMarketVisible ? COLORS.primary : COLORS.textLight} />
-                  <Text style={[styles.bottomNavText, { color: !isMarketVisible ? COLORS.primary : COLORS.textLight }]}>Home</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity style={styles.bottomNavButton} onPress={toggleMarket}>
-                  <Ionicons name="cart-outline" size={24} color={isMarketVisible ? COLORS.primary : COLORS.textLight} />
-                  <Text style={[styles.bottomNavText, { color: isMarketVisible ? COLORS.primary : COLORS.textLight }]}>
-                    Market
-                  </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={styles.bottomNavButton}
-                  onPress={() => router.push("/orders/OrderHistoryScreen")}
+          <SafeAreaView edges={['bottom']} style={styles.bottomNavWrapper}>
+            <View style={styles.bottomNav}>
+              <TouchableOpacity style={styles.bottomNavButton}>
+                <Ionicons name="home" size={22} color={COLORS.primary} />
+                <Text style={[styles.bottomNavText, { color: COLORS.primary }]}>Home</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.bottomNavButton} onPress={toggleMarket}>
+                <Ionicons name="cart-outline" size={22} color={COLORS.textLight} />
+                <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Market</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.bottomNavButton}
+                onPress={() => router.push("/orders/OrderHistoryScreen")}
+              >
+                <Ionicons name="list-outline" size={22} color={COLORS.textLight} />
+                <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Orders</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.bottomNavButton}
+                onPress={() => router.push("/profile/ProfileScreen")}
+              >
+                <Ionicons name="person-outline" size={22} color={COLORS.textLight} />
+                <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Profile</Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
+
+          {/* Market Modal */}
+          {isMarketVisible && (
+            <>
+              <BlurView 
+                intensity={isIOS ? 30 : 50} 
+                tint="dark" 
+                style={StyleSheet.absoluteFillObject}
+              >
+                <TouchableOpacity style={styles.backdropTouchArea} activeOpacity={1} onPress={toggleMarket} />
+              </BlurView>
+              
+              <SafeAreaView edges={['bottom']} style={styles.marketModalContainer}>
+                <Animated.View
+                  style={[
+                    styles.marketModal,
+                    {
+                      transform: [
+                        {
+                          translateY: slideAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [300, 0],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
                 >
-                  <Ionicons name="list" size={24} color={COLORS.textLight} />
-                  <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Orders</Text>
-                </TouchableOpacity>
-                
-                {/* <TouchableOpacity 
-                  style={styles.bottomNavButton}
-                  onPress={() => router.push("/messages/MessagesScreen")}
-                >
-                  <Ionicons name="chatbubble-outline" size={24} color={COLORS.textLight} />
-                  <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Messages</Text>
-                </TouchableOpacity> */}
-                
-                <TouchableOpacity 
-                  style={styles.bottomNavButton}
-                  onPress={() => router.push("/profile/ProfileScreen")}
-                >
-                  <Ionicons name="person-outline" size={24} color={COLORS.textLight} />
-                  <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Profile</Text>
-                </TouchableOpacity>
-              </View>
-            </BlurView>
-          ) : (
-            <SafeAreaView edges={['bottom']} style={styles.bottomNavWrapper}>
-              <View style={styles.bottomNav}>
-                <TouchableOpacity style={styles.bottomNavButton}>
-                  <Ionicons name="home" size={24} color={!isMarketVisible ? COLORS.primary : COLORS.textLight} />
-                  <Text style={[styles.bottomNavText, { color:!isMarketVisible ? COLORS.primary : COLORS.textLight }]}>Home</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity style={styles.bottomNavButton} onPress={toggleMarket}>
-                  <Ionicons name="cart-outline" size={24} color={isMarketVisible ? COLORS.primary : COLORS.textLight} />
-                  <Text style={[styles.bottomNavText, { color: isMarketVisible ? COLORS.primary : COLORS.textLight }]}>
-                    Market
-                  </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={styles.bottomNavButton}
-                  onPress={() => router.push("/orders/OrderHistoryScreen")}
-                >
-                  <Ionicons name="list" size={24} color={COLORS.textLight} />
-                  <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Orders</Text>
-                </TouchableOpacity>
-                
-                {/* <TouchableOpacity 
-                  style={styles.bottomNavButton}
-                  onPress={() => router.push("/messages/MessagesScreen")}
-                >
-                  <Ionicons name="chatbubble-outline" size={24} color={COLORS.textLight} />
-                  <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Messages</Text>
-                </TouchableOpacity> */}
-                
-                <TouchableOpacity 
-                  style={styles.bottomNavButton}
-                  onPress={() => router.push("/profile/ProfileScreen")}
-                >
-                  <Ionicons name="person-outline" size={24} color={COLORS.textLight} />
-                  <Text style={[styles.bottomNavText, { color: COLORS.textLight }]}>Profile</Text>
-                </TouchableOpacity>
-              </View>
-            </SafeAreaView>
+                  <View style={styles.marketModalHandle} />
+                  <View style={styles.marketContent}>
+                    <Text style={styles.marketModalTitle}>Marketplace</Text>
+                    
+                    <TouchableOpacity
+                      style={styles.marketOption}
+                      onPress={() => handleMarketAction("/market/BuyScreen")}
+                    >
+                      <View style={[styles.marketOptionIcon, { backgroundColor: COLORS.primaryLight }]}>
+                        <Ionicons name="cart" size={22} color={COLORS.primary} />
+                      </View>
+                      <View style={styles.marketOptionContent}>
+                        <Text style={styles.marketOptionTitle}>Buy Products & Services</Text>
+                        <Text style={styles.marketOptionText}>Shop from verified sellers</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={COLORS.textLight} />
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity
+                      style={styles.marketOption}
+                      onPress={() => handleMarketAction("/market/SellScreen")}
+                    >
+                      <View style={[styles.marketOptionIcon, { backgroundColor: COLORS.primaryLight }]}>
+                        <Ionicons name="cash-outline" size={22} color={COLORS.primary} />
+                      </View>
+                      <View style={styles.marketOptionContent}>
+                        <Text style={styles.marketOptionTitle}>Sell Your Items</Text>
+                        <Text style={styles.marketOptionText}>List products or services</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={COLORS.textLight} />
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity
+                      style={styles.marketOption}
+                      onPress={() => handleMarketAction("/delivery/DeliveryAgentsScreen")}
+                    >
+                      <View style={[styles.marketOptionIcon, { backgroundColor: COLORS.primaryLight }]}>
+                        <Ionicons name="car-outline" size={22} color={COLORS.primary} />
+                      </View>
+                      <View style={styles.marketOptionContent}>
+                        <Text style={styles.marketOptionTitle}>Delivery Services</Text>
+                        <Text style={styles.marketOptionText}>Find delivery agents</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={COLORS.textLight} />
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity 
+                      style={styles.closeMarketButton} 
+                      onPress={toggleMarket}
+                    >
+                      <Text style={styles.closeMarketText}>Close</Text>
+                    </TouchableOpacity>
+                  </View>
+                </Animated.View>
+              </SafeAreaView>
+            </>
           )}
-
-          {/* Animated Market Modal - FIXED VERSION */}
-          
-
-
-{isMarketVisible && (
-  <>
-   {/* Backdrop Blur */}
-    <BlurView 
-      intensity={isIOS ? 30 : 50} 
-      tint="dark" 
-      style={StyleSheet.absoluteFillObject}
-    >
-      <TouchableOpacity 
-        style={styles.backdropTouchArea} 
-        activeOpacity={1} 
-        onPress={toggleMarket}
-      />
-    </BlurView>
- 
-  <SafeAreaView edges={['bottom']} style={styles.marketModalContainer}>
-    <Animated.View
-      style={[
-        styles.marketModal,
-        {
-          transform: [
-            {
-              translateY: slideAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [300, 1],
-              }),
-            },
-          ],
-        },
-      ]}
-    >
-      <View style={styles.marketContent}>
-        <Text style={styles.marketModalTitle}>Marketplace</Text>
-        
-        <TouchableOpacity
-          style={styles.marketOption}
-          onPress={() => handleMarketAction("/market/BuyScreen")}
-        >
-          <View style={[styles.marketOptionIcon, { backgroundColor: COLORS.primaryLight }]}>
-            <Ionicons name="cart" size={24} color={COLORS.primary} />
-          </View>
-          <View style={styles.marketOptionContent}>
-            <Text style={styles.marketOptionTitle}>Buy Products & Services</Text>
-            <Text style={styles.marketOptionText}>Shop from verified sellers</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={COLORS.textLight} />
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={styles.marketOption}
-          onPress={() => handleMarketAction("/market/SellScreen")}
-        >
-          <View style={[styles.marketOptionIcon, { backgroundColor: COLORS.primaryLight }]}>
-            <Ionicons name="cash" size={24} color={COLORS.primary} />
-          </View>
-          <View style={styles.marketOptionContent}>
-            <Text style={styles.marketOptionTitle}>Sell Your Items</Text>
-            <Text style={styles.marketOptionText}>List products or services</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={COLORS.textLight} />
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={styles.marketOption}
-          onPress={() => handleMarketAction("/delivery/DeliveryAgentsScreen")}
-        >
-          <View style={[styles.marketOptionIcon, { backgroundColor: COLORS.primaryLight }]}>
-            <Ionicons name="car" size={24} color={COLORS.primary} />
-          </View>
-          <View style={styles.marketOptionContent}>
-            <Text style={styles.marketOptionTitle}>Delivery Services</Text>
-            <Text style={styles.marketOptionText}>Find delivery agents</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={COLORS.textLight} />
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.closeMarketButton} 
-          onPress={toggleMarket}
-        >
-          <Text style={styles.closeMarketText}>Close</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.modalBottomSafeArea} />
-    </Animated.View>
-  </SafeAreaView>
-   </>
-)}
         </View>
       </SafeAreaView>
     </>
@@ -728,84 +637,92 @@ useEffect(() => {
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: COLORS.background,
-  },
-backdropTouchArea: {
+  container: {
     flex: 1,
+    backgroundColor: '#0f1923',
   },
-
-modalBottomSafeArea: {
-  height: isIOS ? 40 : 20,
-},
   innerContainer: {
     flex: 1,
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 15,
+    color: '#6B7280',
+  },
+  
+  // Hero Section
+  heroSection: {
+    paddingTop: statusBarHeight + 8,
+    paddingBottom: 40,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  glassBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.25)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  loadingContent: {
+  glassBtnSmall: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.25)',
+    justifyContent: 'center',
     alignItems: 'center',
-  },
-  loadingSpinner: {
-    marginBottom: 20,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: COLORS.textLight,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: isIOS ? 10 : 20,
-    paddingBottom: 15,
-    backgroundColor: COLORS.background,
-  },
-  profileButton: {
-    padding: 4,
+    marginLeft: 12,
+    position: 'relative',
   },
   profileIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   profileInitial: {
-    color: COLORS.white,
+    color: '#fff',
     fontSize: 18,
     fontWeight: '600',
   },
+  topBarTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 0.5,
+  },
   headerIcons: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  headerIconButton: {
-    padding: 8,
-    marginLeft: 12,
-    position: 'relative',
-  },
-  // SMALLER COMPACT BALANCE CARD
+  
+  // Balance Card
   balanceCard: {
-    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginHorizontal: 20,
-    borderRadius: 14,
-    padding: 16,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
+    padding: 20,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 20,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.2)',
   },
   balanceLeft: {
     flex: 1,
@@ -816,134 +733,151 @@ modalBottomSafeArea: {
   welcomeText: {
     fontSize: 14,
     fontWeight: '400',
-    color: 'rgba(255,255,255,0.9)',
+    color: 'rgba(255,255,255,0.8)',
     marginBottom: 8,
   },
   userName: {
     fontSize: 16,
     fontWeight: '600',
-    color: COLORS.white,
+    color: '#fff',
   },
   balanceLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: 'rgba(255,255,255,0.8)',
-    marginBottom: 2,
-  },
-  balanceAmount: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: COLORS.white,
-  },
-  walletLabel: {
     fontSize: 11,
     fontWeight: '500',
-    color: 'rgba(255,255,255,0.8)',
+    color: 'rgba(255,255,255,0.7)',
     marginBottom: 4,
   },
-  walletIdButton: {
+  balanceAmount: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: -0.5,
+  },
+  walletCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
     backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
   },
-  walletIdText: {
+  walletLabel: {
     fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.white,
+    fontWeight: '500',
+    color: '#fff',
+  },
+  
+  // Content Sheet
+  contentSheet: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    marginTop: -20,
+    paddingHorizontal: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  dragPill: {
+    width: 36,
+    height: 4,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 20,
   },
   scrollContent: {
     paddingBottom: 100,
   },
-  sectionContainer: {
-    marginTop: 20,
-    paddingHorizontal: 20,
+  
+  // Section
+  section: {
+    marginBottom: 24,
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 16,
+  sectionLabel: {
+    fontSize: 11,
     fontWeight: '700',
-    color: COLORS.text,
+    color: '#9CA3AF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 14,
   },
-  actionsCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 14,
-    padding: 16,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
+  divider: {
+    height: 0.5,
+    backgroundColor: '#F0F0F0',
+    marginVertical: 18,
   },
+  
+  // Actions Grid
   actionsGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     flexWrap: 'wrap',
+    gap: 12,
   },
-  actionButton: {
+  actionCard: {
+    flex: 1,
+    minWidth: '22%',
     alignItems: 'center',
-    width: '25%',
-    marginBottom: 8,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    borderWidth: 0.5,
+    borderColor: '#E5E7EB',
   },
   actionIcon: {
     width: 48,
     height: 48,
-    borderRadius: 12,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   actionText: {
     fontSize: 11,
     fontWeight: '600',
-    color: COLORS.text,
+    color: '#111827',
     textAlign: 'center',
   },
-  carouselCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 14,
-    padding: 16,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-  },
+  
+  // Carousel
   carouselScroll: {
     flexDirection: 'row',
   },
   carouselItem: {
-    width: width * 0.8,
+    width: width * 0.75,
     marginRight: 16,
   },
-  carouselContent: {
-    flex: 1,
+  carouselCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 0.5,
+    borderColor: '#E5E7EB',
   },
   carouselIconContainer: {
     width: 48,
     height: 48,
-    borderRadius: 12,
+    borderRadius: 14,
     backgroundColor: COLORS.primaryLight,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   carouselTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: COLORS.text,
-    marginBottom: 6,
+    color: '#111827',
+    marginBottom: 8,
   },
   carouselText: {
     fontSize: 13,
-    color: COLORS.textLight,
+    color: '#6B7280',
     lineHeight: 18,
   },
   dotsContainer: {
@@ -956,22 +890,21 @@ modalBottomSafeArea: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: COLORS.border,
-    marginHorizontal: 3,
+    backgroundColor: '#D1D5DB',
+    marginHorizontal: 4,
   },
   activeDot: {
     backgroundColor: COLORS.primary,
     width: 20,
   },
+  
+  // Featured Card
   featuredCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 14,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 16,
     padding: 16,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
+    borderWidth: 0.5,
+    borderColor: '#E5E7EB',
   },
   featuredItem: {
     flexDirection: 'row',
@@ -981,7 +914,6 @@ modalBottomSafeArea: {
     width: 44,
     height: 44,
     borderRadius: 12,
-    backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
@@ -990,60 +922,82 @@ modalBottomSafeArea: {
     flex: 1,
   },
   featuredTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.text,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
     marginBottom: 2,
   },
   featuredText: {
-    fontSize: 13,
-    color: COLORS.textLight,
+    fontSize: 12,
+    color: '#6B7280',
   },
   featuredDivider: {
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginVertical: 12,
+    height: 0.5,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 14,
+  },
+  
+  // Bottom Navigation
+  bottomNavWrapper: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderTopWidth: 0.5,
+    borderTopColor: '#E5E7EB',
+  },
+  bottomNav: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: isIOS ? 24 : 12,
+  },
+  bottomNavButton: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  bottomNavText: {
+    fontSize: 10,
+    fontWeight: '500',
   },
   bottomPadding: {
     height: 80,
   },
-  bottomNavWrapper: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: isIOS ? 'transparent' : COLORS.white,
-    borderTopWidth: isIOS ? 0 : 1,
-    borderTopColor: COLORS.border,
-  },
-  bottomNav: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "center",
-    paddingTop: 10,
-    paddingBottom: isIOS ? 24 : 10,
-    backgroundColor: isIOS ? 'rgba(255,255,255,0.9)' : COLORS.white,
-  },
-  bottomNavButton: {
+  
+  // Notification Badge
+  notificationBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#E24B4A',
+    borderRadius: 10,
+    minWidth: 16,
+    height: 16,
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 6,
+    paddingHorizontal: 3,
   },
-  bottomNavText: {
-    fontSize: 9,
-    fontWeight: '600',
-    marginTop: 3,
+  badgeText: {
+    color: '#fff',
+    fontSize: 8,
+    fontWeight: 'bold',
   },
- marketModalContainer: {
+  
+  // Market Modal
+  backdropTouchArea: {
+    flex: 1,
+  },
+  marketModalContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     zIndex: 1,
   },
-  
-  // Make sure your marketModal has a background color
   marketModal: {
-    backgroundColor: COLORS.white,
+    backgroundColor: '#fff',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     shadowColor: '#000',
@@ -1052,32 +1006,41 @@ modalBottomSafeArea: {
     shadowRadius: 8,
     elevation: 5,
   },
-  
+  marketModalHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 8,
+  },
   marketContent: {
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: 8,
     paddingBottom: 30,
-    flex: 1,
   },
   marketModalTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
-    color: COLORS.text,
+    color: '#111827',
     marginBottom: 20,
     textAlign: 'center',
   },
   marketOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
+    backgroundColor: '#F9FAFB',
     padding: 14,
     borderRadius: 14,
     marginBottom: 10,
+    borderWidth: 0.5,
+    borderColor: '#E5E7EB',
   },
   marketOptionIcon: {
     width: 44,
     height: 44,
-    borderRadius: 10,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
@@ -1086,45 +1049,25 @@ modalBottomSafeArea: {
     flex: 1,
   },
   marketOptionTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
-    color: COLORS.text,
+    color: '#111827',
     marginBottom: 2,
   },
   marketOptionText: {
-    fontSize: 13,
-    color: COLORS.textLight,
+    fontSize: 12,
+    color: '#6B7280',
   },
   closeMarketButton: {
     backgroundColor: COLORS.primary,
     paddingVertical: 14,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
     marginTop: 10,
   },
   closeMarketText: {
     fontSize: 15,
     fontWeight: '600',
-    color: COLORS.white,
-  },
-  notificationBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    backgroundColor: '#FF3B30',
-    borderRadius: 9,
-    width: 16,
-    height: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.white,
-  },
-  badgeText: {
-    color: COLORS.white,
-    fontSize: 9,
-    fontWeight: 'bold',
+    color: '#fff',
   },
 });
-
-//

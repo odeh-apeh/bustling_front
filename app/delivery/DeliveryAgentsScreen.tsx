@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { Stack, useRouter, useLocalSearchParams } from "expo-router";
+import React, { useState, useEffect, useCallback } from "react";
+import { Stack, useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import {
   View,
   Text,
@@ -12,12 +12,17 @@ import {
   Alert,
   Platform,
   Linking,
+  RefreshControl,
+  BackHandler,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { BlurView } from "expo-blur";
 import { BASE_URL } from "@/helpers/core-service";
 import { openDialer } from "@/helpers/misc";
 import { useToast } from "@/contexts/toast-content";
+import { StatusBar } from "expo-status-bar";
 
 const { width } = Dimensions.get("window");
 const isIOS = Platform.OS === 'ios';
@@ -38,7 +43,6 @@ type DeliveryAgent = {
   coverage_type?: string;
 };
 
-// Nigerian states for filtering
 const NIGERIAN_STATES = [
   "All States",
   "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno",
@@ -54,16 +58,15 @@ export default function DeliveryAgentsScreen() {
   const [deliveryAgents, setDeliveryAgents] = useState<DeliveryAgent[]>([]);
   const [filteredAgents, setFilteredAgents] = useState<DeliveryAgent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(false);
   const [selectedState, setSelectedState] = useState<string>("All States");
   const {showToast, setMarketVisible} = useToast();
 
-  // Get optional orderId from params if coming from order
   const orderId = params.orderId as string;
   const productName = params.productName as string;
   const sellerName = params.sellerName as string;
 
-  // Check if user is logged in by calling chat token endpoint
   const checkIfLoggedIn = async (): Promise<boolean> => {
     try {
       setCheckingAuth(true);
@@ -72,14 +75,7 @@ export default function DeliveryAgentsScreen() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
       });
-      
-      if (response.ok) {
-        console.log("✅ User is logged in (session valid)");
-        return true;
-      } else {
-        console.log("❌ User is NOT logged in");
-        return false;
-      }
+      return response.ok;
     } catch (error) {
       console.error("Auth check error:", error);
       return false;
@@ -87,23 +83,6 @@ export default function DeliveryAgentsScreen() {
       setCheckingAuth(false);
     }
   };
-
-  // Fetch delivery companies from backend
-  useEffect(() => {
-    fetchDeliveryCompanies();
-  }, []);
-
-  // Filter agents when selectedState changes
-  useEffect(() => {
-    if (selectedState === "All States") {
-      setFilteredAgents(deliveryAgents);
-    } else {
-      const filtered = deliveryAgents.filter(agent => 
-        agent.state?.toLowerCase() === selectedState.toLowerCase()
-      );
-      setFilteredAgents(filtered);
-    }
-  }, [selectedState, deliveryAgents]);
 
   const fetchDeliveryCompanies = async () => {
     try {
@@ -120,14 +99,8 @@ export default function DeliveryAgentsScreen() {
 
       const data = await response.json();
       
-      console.log('📦 Delivery companies API response:', JSON.stringify(data, null, 2));
-      
       if (data.success && data.companies) {
-        // Transform data properly
         const transformedAgents = data.companies.map((agent: any) => {
-          console.log("🔍 Processing agent:", agent);
-          
-          // Determine coverage area
           let coverage = "Standard Delivery";
           if (agent.coverage_area) {
             coverage = agent.coverage_area;
@@ -135,7 +108,6 @@ export default function DeliveryAgentsScreen() {
             coverage = agent.coverage_type;
           }
           
-          // Determine location
           let location = "Location not specified";
           if (agent.local_government && agent.state) {
             location = `${agent.local_government}, ${agent.state}`;
@@ -162,24 +134,59 @@ export default function DeliveryAgentsScreen() {
           };
         });
         
-        console.log("✅ Transformed agents:", transformedAgents);
         setDeliveryAgents(transformedAgents);
         setFilteredAgents(transformedAgents);
       } else {
-        console.error("❌ API error:", data.message);
-        Alert.alert("Error", data.message || "Failed to load delivery companies");
+        showToast(data.message || "Failed to load delivery companies", 'error');
       }
     } catch (error) {
       console.error('❌ Error fetching delivery companies:', error);
-      Alert.alert("Error", "Failed to load delivery companies. Please check your connection.");
+      showToast("Failed to load delivery companies. Please check your connection.", 'error');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  // Handle message button click
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchDeliveryCompanies();
+  }, []);
+
+  useEffect(() => {
+    fetchDeliveryCompanies();
+  }, []);
+
+  useFocusEffect(
+      useCallback(() => {
+        const onBackPress = () => {
+          // Your custom function here
+          setMarketVisible(true);
+          router.back();
+          // Return true to prevent default behavior, false to allow it
+          return true;
+        };
+        
+        const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+        
+        return () => {
+          subscription.remove();
+        };
+      }, [])
+    );
+
+  useEffect(() => {
+    if (selectedState === "All States") {
+      setFilteredAgents(deliveryAgents);
+    } else {
+      const filtered = deliveryAgents.filter(agent => 
+        agent.state?.toLowerCase() === selectedState.toLowerCase()
+      );
+      setFilteredAgents(filtered);
+    }
+  }, [selectedState, deliveryAgents]);
+
   const handleMessageClick = async (agent: DeliveryAgent) => {
-    // Check if user is logged in
     const isLoggedIn = await checkIfLoggedIn();
     
     if (!isLoggedIn) {
@@ -194,26 +201,11 @@ export default function DeliveryAgentsScreen() {
       return;
     }
     
-    // User is logged in, proceed to chat
-    // router.push({
-    //   pathname: "/chat/ChatScreen",
-    //   params: { 
-    //     sellerId: agent.user_id, 
-    //     sellerName: agent.company_name,
-    //     isDeliveryAgent: "true",
-    //     productName: productName || "Delivery Request",
-    //     orderId: orderId || "",
-    //   },
-    // });
     if(agent.phone_number)
     openDialer({phoneNumber: agent.phone_number, onError:(err) => showToast(err,'error')})
   };
 
-  // Handle request delivery button click - NO ORDER ID REQUIRED
   const handleRequestDelivery = async (agent: DeliveryAgent) => {
-    console.log("🚀 Requesting delivery from:", agent.company_name);
-    
-    // Check if user is logged in
     const isLoggedIn = await checkIfLoggedIn();
     
     if (!isLoggedIn) {
@@ -228,14 +220,12 @@ export default function DeliveryAgentsScreen() {
       return;
     }
     
-    // User is logged in, navigate to delivery request form
     router.push({
       pathname: "/delivery/AgreePriceScreen",
       params: { 
         deliveryCompanyId: agent.id,
         deliveryCompanyName: agent.company_name,
         agentUserId: agent.user_id,
-        // Pass order details if available (optional)
         ...(orderId && { orderId }),
         ...(productName && { productName }),
         ...(sellerName && { sellerName }),
@@ -243,226 +233,158 @@ export default function DeliveryAgentsScreen() {
     });
   };
 
-  // Helper functions to generate UI data
   const getDeliveryTypeText = (coverage: string) => {
-    if (!coverage || coverage === "Standard Delivery") {
-      return "Standard Delivery";
-    }
-    
+    if (!coverage || coverage === "Standard Delivery") return "Standard";
     const coverageLower = coverage.toLowerCase();
-    
-    if (coverageLower.includes('interstate') || coverageLower.includes('inter-state')) {
-      return "Inter-state";
-    } else if (coverageLower.includes('intrastate') || coverageLower.includes('intra-state')) {
-      return "Intra-state";
-    } else if (coverageLower.includes('local')) {
-      return "Local";
-    } else if (coverageLower.includes('regional')) {
-      return "Regional";
-    } else if (coverageLower.includes('national')) {
-      return "National";
-    } else {
-      // Capitalize first letter of each word
-      return coverage.split(' ')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-        .join(' ');
-    }
+    if (coverageLower.includes('interstate')) return "Inter-state";
+    if (coverageLower.includes('intrastate')) return "Intra-state";
+    if (coverageLower.includes('local')) return "Local";
+    if (coverageLower.includes('regional')) return "Regional";
+    if (coverageLower.includes('national')) return "National";
+    return coverage.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
   };
 
   const getDeliveryTypeColor = (coverage: string) => {
-    if (!coverage) return "#4CAF50";
-    
+    if (!coverage) return "#10B981";
     const coverageLower = coverage.toLowerCase();
-    
-    if (coverageLower.includes('interstate') || coverageLower.includes('inter-state')) {
-      return "#2196F3"; // Blue for interstate
-    } else if (coverageLower.includes('intrastate') || coverageLower.includes('intra-state')) {
-      return "#FF9800"; // Orange for intrastate
-    } else if (coverageLower.includes('local')) {
-      return "#4CAF50"; // Green for local
-    } else if (coverageLower.includes('regional')) {
-      return "#9C27B0"; // Purple for regional
-    } else if (coverageLower.includes('national')) {
-      return "#F44336"; // Red for national
-    } else {
-      return "#607D8B"; // Blue grey for others
-    }
+    if (coverageLower.includes('interstate')) return "#3B82F6";
+    if (coverageLower.includes('intrastate')) return "#F59E0B";
+    if (coverageLower.includes('local')) return "#10B981";
+    if (coverageLower.includes('regional')) return "#8B5CF6";
+    if (coverageLower.includes('national')) return "#EF4444";
+    return "#6B7280";
   };
 
   const formatPhoneNumber = (phone: string) => {
     if (!phone || phone === 'Not provided') return phone;
-    
-    // Remove any non-digit characters
     const digits = phone.replace(/\D/g, '');
-    
-    // Format as Nigerian phone number: 0803 123 4567
     if (digits.length === 11) {
       return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`;
     } else if (digits.length === 10) {
       return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`;
     }
-    
     return phone;
   };
 
-  // Get count of agents by state
   const getAgentCountByState = (stateName: string) => {
-    if (stateName === "All States") {
-      return deliveryAgents.length;
-    }
-    return deliveryAgents.filter(agent => 
-      agent.state?.toLowerCase() === stateName.toLowerCase()
-    ).length;
+    if (stateName === "All States") return deliveryAgents.length;
+    return deliveryAgents.filter(agent => agent.state?.toLowerCase() === stateName.toLowerCase()).length;
   };
 
   const directToWhatsapp = (phone: string) => {
-      const whatsappUrl = `https://wa.me/${phone}`;
-      Linking.openURL(whatsappUrl).catch(() => {
-        Alert.alert("Error", "Cannot open WhatsApp");
-      });
-    };
-  
+    const whatsappUrl = `https://wa.me/${phone.replace(/\D/g, '')}`;
+    Linking.openURL(whatsappUrl).catch(() => {
+      Alert.alert("Error", "Cannot open WhatsApp");
+    });
+  };
 
   const renderAgentItem = (agent: DeliveryAgent) => (
-    <View style={styles.agentCard}>
-      {/* Company Logo Placeholder */}
+    <LinearGradient
+      key={agent.id}
+      colors={['#FFFFFF', '#F9FAFB']}
+      style={styles.agentCard}
+    >
       <View style={styles.agentImagePlaceholder}>
-        <Ionicons name="business" size={30} color="#007AFF" />
+        <LinearGradient
+          colors={['#E6F2FF', '#F0F7FF']}
+          style={styles.imageGradient}
+        >
+          <Ionicons name="business" size={32} color="#0066CC" />
+        </LinearGradient>
       </View>
       
       <View style={styles.agentInfo}>
-        {/* Company Header */}
         <View style={styles.companyHeader}>
           <View style={styles.companyInfo}>
             <Text style={styles.companyName}>{agent.company_name}</Text>
-            <View style={styles.statusContainer}>
-              <View style={[styles.statusDot, { 
-                backgroundColor: agent.status === 'active' ? "#4CAF50" : "#FF9800" 
-              }]} />
-              <Text style={styles.statusText}>
+            <View style={[styles.statusContainer, { backgroundColor: agent.status === 'active' ? '#D1FAE5' : '#FEF3C7' }]}>
+              <View style={[styles.statusDot, { backgroundColor: agent.status === 'active' ? "#10B981" : "#F59E0B" }]} />
+              <Text style={[styles.statusText, { color: agent.status === 'active' ? "#10B981" : "#F59E0B" }]}>
                 {agent.status === 'active' ? 'Available' : 'Busy'}
               </Text>
             </View>
           </View>
         </View>
 
-        {/* Location & Phone */}
         <View style={styles.contactRow}>
           <View style={styles.contactItem}>
-            <Ionicons name="location-outline" size={12} color="#666" />
+            <Ionicons name="location-outline" size={14} color="#6B7280" />
             <Text style={styles.contactText} numberOfLines={1}>
               {agent.location || 'Location not specified'}
             </Text>
           </View>
           
           <View style={styles.contactItem}>
-            <Ionicons name="call-outline" size={12} color="#666" />
+            <Ionicons name="call-outline" size={14} color="#6B7280" />
             <Text style={styles.contactText}>
               {formatPhoneNumber(agent.phone_number || '')}
             </Text>
           </View>
         </View>
 
-        {/* Description */}
         {agent.description && (
           <Text style={styles.description} numberOfLines={2}>
             {agent.description}
           </Text>
         )}
 
-        {/* Vehicle Type and Coverage - FIXED */}
         <View style={styles.detailsRow}>
           {agent.vehicle_type && agent.vehicle_type !== "Various" && (
             <View style={styles.detailItem}>
-              <Ionicons name="car-outline" size={12} color="#666" />
+              <Ionicons name="car-outline" size={12} color="#6B7280" />
               <Text style={styles.detailText}>{agent.vehicle_type}</Text>
             </View>
           )}
           
           {agent.coverage_area && (
-            <View style={styles.detailItem}>
-              <View style={[styles.coverageBadge, { 
-                backgroundColor: getDeliveryTypeColor(agent.coverage_area) 
-              }]}>
-                <Text style={styles.coverageText}>
-                  {getDeliveryTypeText(agent.coverage_area)}
-                </Text>
-              </View>
+            <View style={[styles.coverageBadge, { backgroundColor: getDeliveryTypeColor(agent.coverage_area) }]}>
+              <Text style={styles.coverageText}>
+                {getDeliveryTypeText(agent.coverage_area)}
+              </Text>
             </View>
           )}
         </View>
 
-        {/* Action Buttons */}
         <View style={styles.actionButtons}>
           <TouchableOpacity 
-            style={styles.messageButton}
+            style={styles.callButton}
             onPress={() => handleMessageClick(agent)}
             disabled={checkingAuth}
           >
-            <View style={styles.buttonContent}>
-              <Ionicons name="call" size={14} color="#007AFF" />
-              <Text style={styles.messageButtonText} numberOfLines={1}>
-                {checkingAuth ? "..." : "Call"}
-              </Text>
-            </View>
+            <Ionicons name="call-outline" size={16} color="#0066CC" />
+            <Text style={styles.callButtonText}>Call</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
             style={styles.requestButton}
             onPress={() => handleRequestDelivery(agent)}
           >
-            <View style={styles.buttonContent}>
-              <Ionicons name="checkmark-circle-outline" size={14} color="#fff" />
-              <Text style={styles.requestButtonText} numberOfLines={1}>
-                Request
-              </Text>
-            </View>
+            <LinearGradient
+              colors={['#0066CC', '#3986f9']}
+              style={styles.requestButtonGradient}
+            >
+              <Ionicons name="checkmark-circle-outline" size={16} color="#fff" />
+              <Text style={styles.requestButtonText}>Request</Text>
+            </LinearGradient>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={{
-              display:'flex',
-              justifyContent:'center',
-              alignItems:'center',
-              borderWidth:1,
-              borderColor:'#007AFF',
-              borderRadius:6,
-              paddingVertical:8,
-              paddingHorizontal:10,
-            }}
+            style={styles.whatsappButton}
             onPress={() => directToWhatsapp(agent.phone_number || '')}
           >
-            <View style={styles.buttonContent}>
-              <Ionicons name='logo-whatsapp' size={19} color={'green'} />
-            </View>
+            <Ionicons name="logo-whatsapp" size={20} color="#25D366" />
           </TouchableOpacity>
-
-          
         </View>
       </View>
-    </View>
+    </LinearGradient>
   );
 
-  if (loading) {
+  if (loading && !refreshing) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <Stack.Screen options={{ 
-          headerShown: false,
-          statusBarStyle: 'dark',
-          statusBarBackgroundColor: '#fff',
-        }} />
-        <View style={styles.innerContainer}>
-          <View style={styles.header}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-              <Ionicons name="arrow-back" size={24} color="#000" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Delivery Partners</Text>
-            <View style={styles.placeholder} />
-          </View>
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#007AFF" />
-            <Text style={styles.loadingText}>Loading delivery partners...</Text>
-          </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#0066CC" />
+          <Text style={styles.loadingText}>Finding delivery partners...</Text>
         </View>
       </SafeAreaView>
     );
@@ -470,36 +392,34 @@ export default function DeliveryAgentsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Stack.Screen options={{ 
-        headerShown: false,
-        statusBarStyle: 'dark',
-        statusBarBackgroundColor: '#fff',
-      }} />
+      <Stack.Screen options={{ headerShown: false }} />
+      <StatusBar backgroundColor={'#1260d4'} />
       
       <View style={styles.innerContainer}>
         {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => 
-          {
-            router.back();
-            setMarketVisible(true);
-          }} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#000" />
-            <Text style={styles.backText}></Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Delivery Partners</Text>
-          
-          {/* Register Agent Button */}
-          <TouchableOpacity
-            style={styles.deliveryAgentBtn}
-            onPress={() => router.push("/delivery/RegisterAgentScreen")}
-          >
-            <Ionicons name="add-circle-outline" size={16} color="#fff" />
-            <Text style={styles.deliveryAgentText}>Register</Text>
-          </TouchableOpacity>
-        </View>
+        <LinearGradient
+          colors={['#0066CC', '#3986f9']}
+          style={styles.headerGradient}
+        >
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => {
+              router.back();
+              setMarketVisible(true);
+            }} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={24} color="#fff" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Delivery Partners</Text>
+            <TouchableOpacity
+              style={styles.registerAgentBtn}
+              onPress={() => router.push("/delivery/RegisterAgentScreen")}
+            >
+              <Ionicons name="add-circle-outline" size={18} color="#fff" />
+              <Text style={styles.registerAgentText}>Register</Text>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
 
-        {/* State Filter Tabs - Horizontal Scroll */}
+        {/* State Filter */}
         <View style={styles.stateFilterContainer}>
           <ScrollView 
             horizontal
@@ -523,7 +443,7 @@ export default function DeliveryAgentsScreen() {
                     styles.stateFilterText,
                     isSelected && styles.stateFilterTextSelected
                   ]}>
-                    {state}
+                    {state === "All States" ? "All" : state.length > 10 ? state.slice(0, 8) + "..." : state}
                   </Text>
                   <View style={[
                     styles.stateCountBadge,
@@ -542,31 +462,18 @@ export default function DeliveryAgentsScreen() {
           </ScrollView>
         </View>
 
-        {/* Info Banner */}
-        <View style={styles.infoBanner}>
-          <Ionicons name="information-circle" size={18} color="#007AFF" />
-          <View style={styles.infoContent}>
-            <Text style={styles.infoTitle}>Need Delivery Service?</Text>
-            <Text style={styles.infoText}>
-              • Filter by state to find agents near you{"\n"}
-              • Message any delivery partner to negotiate terms{"\n"}
-              • Request service to book them for your delivery
-            </Text>
-          </View>
-        </View>
-
         {/* Stats Bar */}
         <View style={styles.statsBar}>
           <View style={styles.statItem}>
             <Text style={styles.statNumber}>{filteredAgents.length}</Text>
-            <Text style={styles.statLabel}>Showing</Text>
+            <Text style={styles.statLabel}>Available Partners</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <Text style={styles.statNumber}>
               {filteredAgents.filter(a => a.status === 'active').length}
             </Text>
-            <Text style={styles.statLabel}>Available</Text>
+            <Text style={styles.statLabel}>Active Now</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
@@ -577,74 +484,69 @@ export default function DeliveryAgentsScreen() {
           </View>
         </View>
 
-        {/* State Info Banner (when filtered) */}
-        {selectedState !== "All States" && (
-          <View style={styles.stateInfoBanner}>
-            <Ionicons name="filter" size={16} color="#007AFF" />
-            <Text style={styles.stateInfoText}>
-              Showing delivery partners in <Text style={styles.stateHighlight}>{selectedState}</Text>
-            </Text>
-            <TouchableOpacity 
-              style={styles.clearFilterButton}
-              onPress={() => setSelectedState("All States")}
-            >
-              <Text style={styles.clearFilterText}>Show All</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Delivery Agents List */}
+        {/* Agents List */}
         <ScrollView 
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#0066CC']} tintColor="#0066CC" />
+          }
         >
           {filteredAgents.length === 0 ? (
             <View style={styles.emptyState}>
-              <Ionicons name="car-outline" size={50} color="#ccc" />
+              <View style={styles.emptyIconContainer}>
+                <Ionicons name="car-outline" size={64} color="#D1D5DB" />
+              </View>
               <Text style={styles.emptyStateTitle}>
-                {selectedState === "All States" 
-                  ? "No Delivery Partners Yet" 
-                  : `No Delivery Partners in ${selectedState}`}
+                {selectedState === "All States" ? "No Delivery Partners Yet" : `No Partners in ${selectedState}`}
               </Text>
               <Text style={styles.emptyStateText}>
                 {selectedState === "All States"
                   ? "Be the first to register as a delivery partner and start earning!"
-                  : "Try selecting a different state or check back later for partners in this area."}
+                  : "Try selecting a different state or check back later."}
               </Text>
               {selectedState !== "All States" && (
                 <TouchableOpacity 
-                  style={styles.stateFilterButtonInEmpty}
+                  style={styles.clearFilterBtn}
                   onPress={() => setSelectedState("All States")}
                 >
-                  <Text style={styles.stateFilterButtonTextInEmpty}>View All Partners</Text>
+                  <Text style={styles.clearFilterBtnText}>View All Partners</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity 
-                style={styles.registerButton}
+                style={styles.registerEmptyBtn}
                 onPress={() => router.push("/delivery/RegisterAgentScreen")}
               >
-                <Text style={styles.registerButtonText}>Register Now</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.retryButton}
-                onPress={fetchDeliveryCompanies}
-              >
-                <Text style={styles.retryButtonText}>Refresh List</Text>
+                <LinearGradient
+                  colors={['#0066CC', '#3986f9']}
+                  style={styles.registerEmptyGradient}
+                >
+                  <Ionicons name="add-circle-outline" size={20} color="#fff" />
+                  <Text style={styles.registerEmptyText}>Register Now</Text>
+                </LinearGradient>
               </TouchableOpacity>
             </View>
           ) : (
-            filteredAgents.map((agent) => (
-              <View key={agent.id}>
-                {renderAgentItem(agent)}
-              </View>
-            ))
+            filteredAgents.map((agent) => renderAgentItem(agent))
           )}
           
-          {/* Bottom padding for safe area */}
           <View style={styles.bottomPadding} />
         </ScrollView>
       </View>
+
+      {/* Floating Action Button */}
+      <TouchableOpacity 
+        style={styles.floatingButton} 
+        onPress={() => router.push("/delivery/ManageDeliveryAgent")}
+      >
+        <LinearGradient
+          colors={['#0066CC', '#3986f9']}
+          style={styles.floatingButtonGradient}
+        >
+          <Ionicons name="options" size={22} color="#fff" />
+        </LinearGradient>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -652,94 +554,91 @@ export default function DeliveryAgentsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: '#F8FAFC',
   },
   innerContainer: {
     flex: 1,
+  },
+  headerGradient: {
+    paddingTop: Platform.OS === 'ios' ? 8 : 40,
+    paddingBottom: 16,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    elevation: 4,
+    shadowColor: '#0066CC',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 15,
-    paddingTop: isIOS ? 10 : 15,
-    paddingBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    paddingHorizontal: 16,
   },
   backButton: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  backText: {
-    marginLeft: 5,
-    fontSize: 16,
-    color: "#000",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: "600",
-    color: '#000',
-    flex: 1,
-    textAlign: 'center',
-    marginHorizontal: 10,
+    fontWeight: "700",
+    color: '#fff',
   },
-  placeholder: {
-    width: 24,
+  registerAgentBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 20,
+    gap: 4,
+  },
+  registerAgentText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  deliveryAgentBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
-    alignItems: 'center',
-    flexDirection: 'row',
     justifyContent: 'center',
-    gap: 6,
-    minWidth: 90,
-  },
-  deliveryAgentText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
   },
   loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: "#666",
+    marginTop: 12,
+    fontSize: 14,
+    color: '#6B7280',
   },
-  // State Filter Styles
   stateFilterContainer: {
     backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    paddingVertical: 10,
+    borderBottomColor: '#F0F0F0',
+    paddingVertical: 12,
   },
   stateFilterScrollContent: {
-    paddingHorizontal: 15,
-    alignItems: 'center',
+    paddingHorizontal: 16,
+    gap: 8,
   },
   stateFilterButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 20,
-    marginRight: 8,
-    minHeight: 32,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 24,
+    gap: 6,
   },
   stateFilterButtonSelected: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#0066CC',
   },
   stateFilterText: {
-    fontSize: 12,
-    color: '#666',
+    fontSize: 13,
+    color: '#6B7280',
     fontWeight: '500',
   },
   stateFilterTextSelected: {
@@ -747,140 +646,93 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   stateCountBadge: {
-    marginLeft: 4,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    backgroundColor: '#e0e0e0',
-    borderRadius: 10,
-    minWidth: 20,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 12,
+    minWidth: 22,
     alignItems: 'center',
-    justifyContent: 'center',
   },
   stateCountBadgeSelected: {
-    backgroundColor: '#fff',
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
   stateCountText: {
     fontSize: 10,
-    color: '#666',
+    color: '#6B7280',
     fontWeight: '600',
   },
   stateCountTextSelected: {
-    color: '#007AFF',
-  },
-  stateInfoBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f0f8ff',
-    padding: 12,
-    marginHorizontal: 15,
-    marginTop: 10,
-    borderRadius: 8,
-    gap: 8,
-  },
-  stateInfoText: {
-    flex: 1,
-    fontSize: 12,
-    color: '#007AFF',
-  },
-  stateHighlight: {
-    fontWeight: '700',
-  },
-  clearFilterButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: 'rgba(0, 122, 255, 0.1)',
-    borderRadius: 4,
-  },
-  clearFilterText: {
-    fontSize: 11,
-    color: '#007AFF',
-    fontWeight: '500',
-  },
-  infoBanner: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    backgroundColor: "#f8f9fa",
-    padding: 12,
-    marginHorizontal: 15,
-    marginTop: 10,
-    borderRadius: 8,
-    gap: 8,
-  },
-  infoContent: {
-    flex: 1,
-  },
-  infoTitle: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#007AFF",
-    marginBottom: 2,
-  },
-  infoText: {
-    color: "#666",
-    fontSize: 11,
-    lineHeight: 15,
+    color: '#fff',
   },
   statsBar: {
-    flexDirection: "row",
-    backgroundColor: "#f8f9ff",
-    padding: 12,
-    marginHorizontal: 15,
-    marginTop: 10,
-    borderRadius: 8,
-    justifyContent: "space-around",
-    alignItems: "center",
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
   },
   statItem: {
-    alignItems: "center",
     flex: 1,
+    alignItems: 'center',
   },
   statNumber: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#007AFF",
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0066CC',
   },
   statLabel: {
-    fontSize: 10,
-    color: "#666",
-    marginTop: 2,
-    textAlign: "center",
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 4,
   },
   statDivider: {
     width: 1,
-    height: 24,
-    backgroundColor: "#ddd",
+    height: 30,
+    backgroundColor: '#E5E7EB',
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: 15,
+    padding: 16,
+    paddingBottom: 80,
   },
   agentCard: {
-    flexDirection: "row",
-    backgroundColor: "#f8f9ff",
-    padding: 15,
-    borderRadius: 12,
-    marginBottom: 15,
+    flexDirection: 'row',
+    borderRadius: 20,
+    marginBottom: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
     borderWidth: 1,
-    borderColor: "#e3f2fd",
+    borderColor: '#F0F0F0',
   },
   agentImagePlaceholder: {
+    marginRight: 16,
+  },
+  imageGradient: {
     width: 70,
     height: 70,
-    borderRadius: 8,
-    marginRight: 15,
-    backgroundColor: "#e3f2fd",
-    justifyContent: "center",
-    alignItems: "center",
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   agentInfo: {
     flex: 1,
   },
   companyHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: 8,
   },
   companyInfo: {
@@ -888,14 +740,18 @@ const styles = StyleSheet.create({
   },
   companyName: {
     fontSize: 16,
-    fontWeight: "600",
-    color: "#000",
-    marginBottom: 4,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 6,
   },
   statusContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    gap: 4,
   },
   statusDot: {
     width: 6,
@@ -903,146 +759,170 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   statusText: {
-    fontSize: 11,
-    color: "#666",
+    fontSize: 10,
+    fontWeight: '600',
   },
   contactRow: {
-    flexDirection: "column",
-    gap: 4,
+    gap: 6,
     marginBottom: 8,
   },
   contactItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   contactText: {
-    fontSize: 11,
-    color: "#666",
+    fontSize: 12,
+    color: '#6B7280',
     flex: 1,
   },
   description: {
     fontSize: 12,
-    color: "#666",
-    marginBottom: 8,
+    color: '#6B7280',
+    marginBottom: 10,
     lineHeight: 16,
   },
   detailsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 12,
+    flexWrap: 'wrap',
+    gap: 8,
   },
   detailItem: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 4,
   },
   detailText: {
     fontSize: 11,
-    color: "#666",
+    color: '#6B7280',
   },
   coverageBadge: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
   },
   coverageText: {
-    color: "#fff",
+    color: '#fff',
     fontSize: 10,
-    fontWeight: "600",
+    fontWeight: '600',
   },
   actionButtons: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 4,
+    flexDirection: 'row',
+    gap: 8,
   },
-  messageButton: {
+  callButton: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    gap: 6,
     borderWidth: 1,
-    borderColor: "#007AFF",
-    borderRadius: 6,
-    paddingVertical: 8,
+    borderColor: '#0066CC',
+    backgroundColor: '#fff',
+  },
+  callButtonText: {
+    color: '#0066CC',
+    fontSize: 12,
+    fontWeight: '600',
   },
   requestButton: {
     flex: 1,
-    backgroundColor: "#007AFF",
-    borderRadius: 6,
-    paddingVertical: 8,
+    borderRadius: 10,
+    overflow: 'hidden',
   },
-  buttonContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-  },
-  messageButtonText: {
-    color: "#007AFF",
-    fontSize: 12,
-    fontWeight: '600',
+  requestButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    gap: 6,
   },
   requestButtonText: {
-    color: "#fff",
+    color: '#fff',
     fontSize: 12,
     fontWeight: '600',
   },
+  whatsappButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#DCF8C6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyIconContainer: {
+    marginBottom: 20,
   },
   emptyStateTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#666",
-    marginTop: 16,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
     marginBottom: 8,
-    textAlign: 'center',
   },
   emptyStateText: {
     fontSize: 13,
-    color: "#999",
-    textAlign: "center",
-    lineHeight: 18,
+    color: '#6B7280',
+    textAlign: 'center',
     marginBottom: 20,
-    paddingHorizontal: 20,
+    paddingHorizontal: 32,
+    lineHeight: 18,
   },
-  stateFilterButtonInEmpty: {
+  clearFilterBtn: {
     paddingHorizontal: 20,
     paddingVertical: 10,
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
     marginBottom: 12,
   },
-  stateFilterButtonTextInEmpty: {
+  clearFilterBtnText: {
+    color: '#0066CC',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  registerEmptyBtn: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  registerEmptyGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  registerEmptyText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
   },
-  registerButton: {
-    backgroundColor: "#007AFF",
-    paddingHorizontal: 30,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginBottom: 10,
-  },
-  registerButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  retryButton: {
-    backgroundColor: "#666",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "600",
-  },
   bottomPadding: {
-    height: Platform.OS === 'ios' ? 40 : 20,
+    height: Platform.OS === 'ios' ? 20 : 10,
+  },
+  floatingButton: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    shadowColor: '#0066CC',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  floatingButtonGradient: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Stack, useRouter } from "expo-router";
 import {
   View,
@@ -10,8 +10,12 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  Animated,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { BASE_URL } from "@/helpers/core-service";
 import { useToast } from "@/contexts/toast-content";
 
@@ -47,8 +51,28 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const {setMarketVisible} = useToast();
+  
+  // Animation values
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
 
-  // Fetch user profile data
+  useEffect(() => {
+    fetchProfile();
+    // Entrance animation
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
   const fetchProfile = async (isRefreshing = false) => {
     if (isRefreshing) {
       setRefreshing(true);
@@ -67,6 +91,7 @@ export default function ProfileScreen() {
         setUserProfile(data.user);
         setWallet(data.wallet);
         setStats(data.stats);
+        console.log(data.stats);
       } else {
         Alert.alert("Error", data.message || "Failed to load profile");
       }
@@ -79,70 +104,8 @@ export default function ProfileScreen() {
     }
   };
 
-  useEffect(() => {
-    fetchProfile();
-  }, []);
-
   const handleEditProfile = () => {
     router.push("/profile/EditProfileScreen" as any);
-  };
-
-  const handleUpdateProfile = async (updatedData: Partial<UserProfile>) => {
-    try {
-      const response = await fetch(`${BASE_URL}/api/user/profile`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify(updatedData),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setUserProfile(data.user);
-        Alert.alert("Success", "Profile updated successfully");
-        return true;
-      } else {
-        Alert.alert("Error", data.message || "Failed to update profile");
-        return false;
-      }
-    } catch (error) {
-      console.error("Update profile error:", error);
-      Alert.alert("Error", "Failed to update profile");
-      return false;
-    }
-  };
-
-  const handleResetPassword = async (currentPassword: string, newPassword: string) => {
-    try {
-      const response = await fetch(`${BASE_URL}/api/user/reset-password`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          currentPassword,
-          newPassword,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        Alert.alert("Success", "Password updated successfully");
-        return true;
-      } else {
-        Alert.alert("Error", data.message || "Failed to update password");
-        return false;
-      }
-    } catch (error) {
-      console.error("Reset password error:", error);
-      Alert.alert("Error", "Failed to update password");
-      return false;
-    }
   };
 
   const formatDate = (dateString: string) => {
@@ -164,12 +127,6 @@ export default function ProfileScreen() {
       icon: "cube-outline",
       screen: "/orders/OrderHistoryScreen",
     },
-    // {
-    //   title: "My Bookings", 
-    //   subtitle: "Manage your service bookings",
-    //   icon: "calendar-outline",
-    //   screen: "/bookings/BookingHistoryScreen",
-    // },
     {
       title: "My Products",
       subtitle: "Manage your product listings",
@@ -182,39 +139,9 @@ export default function ProfileScreen() {
       icon: "construct-outline",
       screen: "/market/SellScreen",
     },
-    // {
-    //   title: "Wishlist",
-    //   subtitle: "Your saved items",
-    //   icon: "heart-outline",
-    //   screen: "/wishlist/WishlistScreen",
-    // },
-    // {
-    //   title: "Addresses",
-    //   subtitle: "Manage your addresses",
-    //   icon: "location-outline",
-    //   screen: "/profile/AddressScreen",
-    // },
   ];
 
   const supportItems = [
-    // {
-    //   title: "Help & Support",
-    //   subtitle: "Get help with your account",
-    //   icon: "help-circle-outline",
-    //   screen: "/support/HelpScreen",
-    // },
-    // {
-    //   title: "Trust & Safety",
-    //   subtitle: "Learn about our safety measures",
-    //   icon: "shield-checkmark-outline",
-    //   screen: "/support/TrustSafetyScreen",
-    // },
-    // {
-    //   title: "Change Password",
-    //   subtitle: "Update your password",
-    //   icon: "lock-closed-outline",
-    //   screen: "/profile/ChangePasswordScreen",
-    // },
     {
       title: "Customer Support",
       subtitle: "Get help with your account",
@@ -223,265 +150,404 @@ export default function ProfileScreen() {
     },
   ];
 
-  const MenuItem = ({ icon, title, subtitle, onPress }: any) => (
-    <TouchableOpacity style={styles.menuItem} onPress={onPress}>
+  const MenuItem = ({ icon, title, subtitle, onPress, isLast }: any) => (
+    <TouchableOpacity 
+      style={[styles.menuItem, !isLast && styles.menuItemWithBorder]} 
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
       <View style={styles.menuLeft}>
-        <Ionicons name={icon} size={24} color="#007AFF" />
+        <View style={styles.menuIconContainer}>
+          <Ionicons name={icon} size={22} color="#185FA5" />
+        </View>
         <View style={styles.menuText}>
           <Text style={styles.menuTitle}>{title}</Text>
           <Text style={styles.menuSubtitle}>{subtitle}</Text>
         </View>
       </View>
-      <Ionicons name="chevron-forward" size={20} color="#ccc" />
+      <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
     </TouchableOpacity>
   );
 
   if (loading) {
     return (
-      <View style={styles.container}>
-        <Stack.Screen options={{ headerShown: false }} />
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={26} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Profile</Text>
-          <TouchableOpacity onPress={() => router.push("/settings/SettingsScreen")}>
-            <Ionicons name="settings-outline" size={24} color="#000" />
-          </TouchableOpacity>
-        </View>
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <Stack.Screen options={{ headerShown: false, statusBarStyle: 'dark' }} />
+        <LinearGradient
+          colors={['#185FA5', '#0F4A7A']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.headerGradient}
+        >
+          <View style={styles.header}>
+            <View style={{
+            display:'flex',
+            flexDirection:'row',
+            justifyContent:'center',
+            alignItems:'center',
+            gap:20
+          }}>
+              <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={22} color="#fff" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Profile</Text>
+            <TouchableOpacity onPress={() => {}}>
+              {/* <Ionicons name="settings-outline" size={22} color="#fff" /> */}
+            </TouchableOpacity>
+            </View>
+            
+          </View>
+        </LinearGradient>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#007AFF" />
+          <ActivityIndicator size="large" color="#185FA5" />
           <Text style={styles.loadingText}>Loading profile...</Text>
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (!userProfile) {
     return (
-      <View style={styles.container}>
-        <Stack.Screen options={{ headerShown: false }} />
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={26} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Profile</Text>
-          <TouchableOpacity onPress={() => router.push("/settings/SettingsScreen")}>
-            <Ionicons name="settings-outline" size={24} color="#000" />
-          </TouchableOpacity>
-        </View>
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <Stack.Screen options={{ headerShown: false, statusBarStyle: 'dark' }} />
+        <LinearGradient
+          colors={['#185FA5', '#0F4A7A']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.headerGradient}
+        >
+          <View style={styles.header}>
+            <View  style={{
+            display:'flex',
+            flexDirection:'row',
+            justifyContent:'center',
+            alignItems:'center',
+            gap:20
+          }}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={22} color="#fff" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Profile</Text>
+            <TouchableOpacity onPress={() => router.push("/settings/SettingsScreen")} style={styles.settingsButton}>
+              <Ionicons name="settings-outline" size={22} color="#fff" />
+            </TouchableOpacity>
+          </View>
+            
+          </View>
+        </LinearGradient>
         <View style={styles.errorContainer}>
-          <Ionicons name="person-circle-outline" size={64} color="#ccc" />
+          <Ionicons name="person-circle-outline" size={64} color="#D1D5DB" />
           <Text style={styles.errorText}>Failed to load profile</Text>
           <TouchableOpacity style={styles.retryButton} onPress={() => fetchProfile()}>
-            <Text style={styles.retryButtonText}>Try Again</Text>
+            <LinearGradient
+              colors={['#185FA5', '#0F4A7A']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.retryGradient}
+            >
+              <Text style={styles.retryButtonText}>Try Again</Text>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <Stack.Screen options={{ headerShown: false }} />
-
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => 
-          {
-            router.back();
-            setMarketVisible(false)
-          }
-            }>
-          <Ionicons name="chevron-back" size={26} color="#000" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Profile</Text>
-        <TouchableOpacity onPress={() => router.push("/settings/SettingsScreen")}>
-          <Ionicons name="settings-outline" size={24} color="#000" />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView 
-        style={styles.scrollView} 
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => fetchProfile(true)}
-            colors={["#007AFF"]}
-          />
-        }
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <Stack.Screen options={{ headerShown: false, statusBarStyle: 'light' }} />
+      
+      {/* Header with Gradient */}
+      <LinearGradient
+        colors={['#185FA5', '#0F4A7A']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.headerGradient}
       >
-        {/* Profile Header */}
-        <View style={styles.profileHeader}>
-          <View style={styles.avatarContainer}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {getInitials(userProfile.name)}
-              </Text>
-            </View>
-            <TouchableOpacity style={styles.editAvatarButton}>
-              <Ionicons name="camera" size={16} color="#fff" />
-            </TouchableOpacity>
-          </View>
+        <View style={styles.header}>
           
-          <Text style={styles.userName}>{userProfile.name}</Text>
-          <Text style={styles.userEmail}>{userProfile.email}</Text>
-          <Text style={styles.userPhone}>{userProfile.phone}</Text>
-          
-          <View style={styles.userInfo}>
-            <View style={styles.infoRow}>
-              <Ionicons name="location-outline" size={14} color="#666" />
-              <Text style={styles.infoText}>{userProfile.location || "No location set"}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Ionicons name="person-outline" size={14} color="#666" />
-              <Text style={styles.infoText}>{userProfile.type || "User"}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Ionicons name="calendar-outline" size={14} color="#666" />
-              <Text style={styles.infoText}>Member since {formatDate(userProfile.created_at)}</Text>
-            </View>
+          <View style={{
+            display:'flex',
+            flexDirection:'row',
+            justifyContent:'center',
+            alignItems:'center',
+            gap:20
+          }}>
+            <TouchableOpacity onPress={() => {
+            router.back();
+            setMarketVisible(false);
+          }} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={22} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Profile</Text>
           </View>
-
-          {wallet && (
-            <View style={styles.walletContainer}>
-              <Ionicons name="wallet-outline" size={20} color="#007AFF" />
-              <Text style={styles.walletText}>₦{wallet.balance.toLocaleString()}</Text>
-            </View>
-          )}
-
-          <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
-            <Ionicons name="create-outline" size={16} color="#007AFF" />
-            <Text style={styles.editButtonText}>Edit Profile</Text>
+          <TouchableOpacity onPress={() => {}}>
+            {/* <Ionicons name="settings-outline" size={22} color="#fff" /> */}
           </TouchableOpacity>
         </View>
+      </LinearGradient>
 
-        {/* Stats Grid */}
-        {stats && (
-          <View style={styles.statsSection}>
-            <Text style={styles.sectionTitle}>Activity Summary</Text>
-            <View style={styles.statsGrid}>
-              <View style={styles.statCard}>
-                <Ionicons name="cube-outline" size={24} color="#007AFF" />
-                <Text style={styles.statValue}>{stats.productOrders}</Text>
-                <Text style={styles.statLabel}>Products Bought</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Ionicons name="construct-outline" size={24} color="#007AFF" />
-                <Text style={styles.statValue}>{stats.serviceOrders}</Text>
-                <Text style={styles.statLabel}>Services Booked</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Ionicons name="cart-outline" size={24} color="#007AFF" />
-                <Text style={styles.statValue}>{stats.productsListed}</Text>
-                <Text style={styles.statLabel}>Items Listed</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Ionicons name="business-outline" size={24} color="#007AFF" />
-                <Text style={styles.statValue}>{stats.servicesListed}</Text>
-                <Text style={styles.statLabel}>Services Listed</Text>
-              </View>
-            </View>
-          </View>
-        )}
+      {/* Content Sheet */}
+      <View style={styles.contentSheet}>
+        <View style={styles.dragPill} />
 
-        {/* Menu Items */}
-        <View style={styles.menuSection}>
-          <Text style={styles.sectionTitle}>My Account</Text>
-          {menuItems.map((item, index) => (
-            <MenuItem
-              key={index}
-              icon={item.icon}
-              title={item.title}
-              subtitle={item.subtitle}
-              onPress={() => router.push(item.screen as any)}
+        <ScrollView 
+          style={styles.scrollView} 
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => fetchProfile(true)}
+              colors={["#185FA5"]}
+              tintColor="#185FA5"
             />
-          ))}
-        </View>
+          }
+        >
+          <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+            {/* Profile Header */}
+            <View style={styles.profileHeader}>
+              <View style={styles.avatarContainer}>
+                <LinearGradient
+                  colors={['#185FA5', '#0F4A7A']}
+                  style={styles.avatar}
+                >
+                  <Text style={styles.avatarText}>
+                    {getInitials(userProfile.name)}
+                  </Text>
+                </LinearGradient>
+                <TouchableOpacity style={styles.editAvatarButton}>
+                  <Ionicons name="camera" size={14} color="#fff" />
+                </TouchableOpacity>
+              </View>
+              
+              <Text style={styles.userName}>{userProfile.name}</Text>
+              <Text style={styles.userEmail}>{userProfile.email}</Text>
+              <Text style={styles.userPhone}>{userProfile.phone}</Text>
+              
+              <View style={styles.userInfo}>
+                <View style={styles.infoRow}>
+                  <Ionicons name="location-outline" size={14} color="#6B7280" />
+                  <Text style={styles.infoText}>{userProfile.location || "No location set"}</Text>
+                </View>
+                <View style={styles.infoRow}>
+                  <Ionicons name="person-outline" size={14} color="#6B7280" />
+                  <Text style={styles.infoText}>{userProfile.type || "User"}</Text>
+                </View>
+                <View style={styles.infoRow}>
+                  <Ionicons name="calendar-outline" size={14} color="#6B7280" />
+                  <Text style={styles.infoText}>Member since {formatDate(userProfile.created_at)}</Text>
+                </View>
+              </View>
 
-        {/* Support Section */}
-        <View style={styles.supportSection}>
-          <Text style={styles.sectionTitle}>Support & Settings</Text>
-          {supportItems.map((item, index) => (
-          <MenuItem
-            key={index}
-            icon={item.icon}
-            title={item.title}
-            subtitle={item.subtitle}
-            onPress={() => router.push(item.screen as any)}  // ✅ SIMPLE NAVIGATION
-            
-          />
-        ))}
-        </View>
-        
+              {wallet && (
+                <View style={styles.walletContainer}>
+                  <Ionicons name="wallet-outline" size={18} color="#185FA5" />
+                  <Text style={styles.walletText}>₦{wallet.balance.toLocaleString()}</Text>
+                </View>
+              )}
 
-        <View style={{ height: 30 }} />
-      </ScrollView>
-    </View>
+              <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
+                <Ionicons name="create-outline" size={16} color="#185FA5" />
+                <Text style={styles.editButtonText}>Edit Profile</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Stats Grid */}
+            {stats && (
+              <View style={styles.statsSection}>
+                <Text style={styles.sectionTitle}>Activity Summary</Text>
+                <View style={styles.statsGrid}>
+                  <View style={styles.statCard}>
+                    <View style={styles.statIconContainer}>
+                      <Ionicons name="cube-outline" size={22} color="#185FA5" />
+                    </View>
+                    <Text style={styles.statValue}>{stats.productOrders}</Text>
+                    <Text style={styles.statLabel}>Products Bought</Text>
+                  </View>
+                  <View style={styles.statCard}>
+                    <View style={styles.statIconContainer}>
+                      <Ionicons name="construct-outline" size={22} color="#185FA5" />
+                    </View>
+                    <Text style={styles.statValue}>{stats.serviceOrders}</Text>
+                    <Text style={styles.statLabel}>Services Booked</Text>
+                  </View>
+                  <View style={styles.statCard}>
+                    <View style={styles.statIconContainer}>
+                      <Ionicons name="cart-outline" size={22} color="#185FA5" />
+                    </View>
+                    <Text style={styles.statValue}>{stats.productsListed}</Text>
+                    <Text style={styles.statLabel}>Items Listed</Text>
+                  </View>
+                  <View style={styles.statCard}>
+                    <View style={styles.statIconContainer}>
+                      <Ionicons name="business-outline" size={22} color="#185FA5" />
+                    </View>
+                    <Text style={styles.statValue}>{stats.servicesListed}</Text>
+                    <Text style={styles.statLabel}>Services Listed</Text>
+                  </View>
+                </View>
+              </View>
+            )}
+
+            <View style={styles.divider} />
+
+            {/* Menu Items */}
+            <View style={styles.menuSection}>
+              <Text style={styles.sectionTitle}>My Account</Text>
+              {menuItems.map((item, index) => (
+                <MenuItem
+                  key={index}
+                  icon={item.icon}
+                  title={item.title}
+                  subtitle={item.subtitle}
+                  isLast={index === menuItems.length - 1}
+                  onPress={() => router.push(item.screen as any)}
+                />
+              ))}
+            </View>
+
+            <View style={styles.divider} />
+
+            {/* Support Section */}
+            <View style={styles.supportSection}>
+              <Text style={styles.sectionTitle}>Support & Settings</Text>
+              {supportItems.map((item, index) => (
+                <MenuItem
+                  key={index}
+                  icon={item.icon}
+                  title={item.title}
+                  subtitle={item.subtitle}
+                  isLast={index === supportItems.length - 1}
+                  onPress={() => router.push(item.screen as any)}
+                />
+              ))}
+            </View>
+
+            <View style={styles.bottomPadding} />
+          </Animated.View>
+        </ScrollView>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
-    paddingTop: 25,
+    backgroundColor: '#0f1923',
+  },
+  
+  // Header Gradient
+  headerGradient: {
+    paddingTop: Platform.OS === 'ios' ? 10 : 20,
+    paddingBottom: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    marginBottom:8
+  },
+  backButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.25)',
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: "600",
+    color: "#fff",
   },
+  settingsButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  
+  // Content Sheet
+  contentSheet: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    marginTop: -20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  dragPill: {
+    width: 36,
+    height: 4,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  
   scrollView: {
     flex: 1,
+    paddingHorizontal: 20,
   },
+  
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: '#fff',
   },
   loadingText: {
     marginTop: 10,
-    color: "#666",
-    fontSize: 16,
+    color: "#6B7280",
+    fontSize: 14,
   },
+  
   errorContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: '#fff',
     padding: 40,
   },
   errorText: {
-    fontSize: 18,
-    color: "#666",
+    fontSize: 16,
+    color: "#6B7280",
     marginTop: 16,
     marginBottom: 20,
   },
   retryButton: {
-    backgroundColor: "#007AFF",
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  retryGradient: {
     paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 8,
   },
   retryButtonText: {
     color: "#fff",
     fontWeight: "600",
-    fontSize: 16,
+    fontSize: 14,
   },
+  
+  // Profile Header
   profileHeader: {
     alignItems: "center",
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    paddingVertical: 24,
   },
   avatarContainer: {
     position: "relative",
@@ -491,7 +557,6 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: "#007AFF",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -504,7 +569,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 0,
     right: 0,
-    backgroundColor: "#007AFF",
+    backgroundColor: "#185FA5",
     width: 32,
     height: 32,
     borderRadius: 16,
@@ -517,16 +582,16 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "700",
     marginBottom: 4,
-    color: "#111",
+    color: "#111827",
   },
   userEmail: {
-    fontSize: 16,
-    color: "#666",
+    fontSize: 14,
+    color: "#6B7280",
     marginBottom: 2,
   },
   userPhone: {
-    fontSize: 14,
-    color: "#666",
+    fontSize: 13,
+    color: "#6B7280",
     marginBottom: 12,
   },
   userInfo: {
@@ -539,14 +604,14 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   infoText: {
-    fontSize: 14,
-    color: "#666",
+    fontSize: 13,
+    color: "#6B7280",
     marginLeft: 6,
   },
   walletContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f8f9ff",
+    backgroundColor: "#E6F1FB",
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
@@ -555,33 +620,36 @@ const styles = StyleSheet.create({
   walletText: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#007AFF",
+    color: "#185FA5",
     marginLeft: 6,
   },
   editButton: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderWidth: 1,
-    borderColor: "#007AFF",
+    borderColor: "#185FA5",
     borderRadius: 20,
+    gap: 6,
   },
   editButtonText: {
-    color: "#007AFF",
+    color: "#185FA5",
     fontWeight: "600",
-    marginLeft: 6,
+    fontSize: 13,
   },
+  
+  // Stats Section
   statsSection: {
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    paddingVertical: 20,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: "600",
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#9CA3AF",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
     marginBottom: 16,
-    color: "#111",
   },
   statsGrid: {
     flexDirection: "row",
@@ -591,56 +659,88 @@ const styles = StyleSheet.create({
   statCard: {
     flex: 1,
     minWidth: "45%",
-    backgroundColor: "#f8f9ff",
-    padding: 16,
-    borderRadius: 12,
+    backgroundColor: "#F9FAFB",
+    padding: 14,
+    borderRadius: 14,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#F0F0F0",
+  },
+  statIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#E6F1FB",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
   },
   statValue: {
     fontSize: 20,
     fontWeight: "700",
-    color: "#007AFF",
-    marginTop: 8,
+    color: "#185FA5",
     marginBottom: 4,
   },
   statLabel: {
-    fontSize: 12,
-    color: "#666",
+    fontSize: 11,
+    color: "#6B7280",
     textAlign: "center",
   },
+  
+  // Divider
+  divider: {
+    height: 0.5,
+    backgroundColor: '#F0F0F0',
+    marginVertical: 20,
+  },
+  
+  // Menu Section
   menuSection: {
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    paddingVertical: 8,
   },
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: 16,
+  },
+  menuItemWithBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: "#f8f8f8",
+    borderBottomColor: "#F0F0F0",
   },
   menuLeft: {
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
   },
+  menuIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#E6F1FB",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 14,
+  },
   menuText: {
-    marginLeft: 12,
     flex: 1,
   },
   menuTitle: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#333",
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
     marginBottom: 2,
   },
   menuSubtitle: {
     fontSize: 12,
-    color: "#666",
+    color: "#6B7280",
   },
+  
   supportSection: {
-    padding: 20,
+    paddingVertical: 8,
+  },
+  
+  bottomPadding: {
+    height: 40,
   },
 });

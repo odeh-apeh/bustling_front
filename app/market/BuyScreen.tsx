@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from "react";
-import { Stack, useRouter } from "expo-router";
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import { Stack, useFocusEffect, useRouter } from "expo-router";
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import {
   ActivityIndicator,
   Platform,
   Linking,
+  BackHandler,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -30,7 +31,7 @@ const { height } = Dimensions.get("window");
 const isIOS = Platform.OS === 'ios';
 
 const COLORS = {
-  primary: '#0066CC',
+  primary: '#0F4A7A',
   primaryLight: '#E6F2FF',
   secondary: '#4CAF50',
   accent: '#FF9800',
@@ -226,6 +227,25 @@ export default function BuyScreen() {
   useEffect(() => {
     fetchProducts();
   }, [selectedType, selectedCategoryId, searchQuery]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        // Your custom function here
+        setMarketVisible(true);
+        router.back();
+        
+        // Return true to prevent default behavior, false to allow it
+        return true;
+      };
+      
+      const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      
+      return () => {
+        subscription.remove();
+      };
+    }, [])
+  );
 
   // Toggle Market Modal
   const toggleMarket = () => {
@@ -749,6 +769,7 @@ const styles = StyleSheet.create({
   categoryScrollContent: {
     paddingRight: 12,
     gap: 8,
+    marginBottom: 8,
   },
   categoryButton: {
     borderWidth: 1,

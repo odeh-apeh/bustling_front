@@ -1,5 +1,5 @@
 // app/transfer/TransferScreen.tsx
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,10 +11,11 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  StatusBar,
+  Animated,
 } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BASE_URL } from "@/helpers/core-service";
 
@@ -32,6 +33,26 @@ export default function TransferScreen() {
   const [beneficiary, setBeneficiary] = useState<Beneficiary | null>(null);
   const [loading, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
+  
+  // Animation values
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+
+  useEffect(() => {
+    // Entrance animation
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
 
   const lookupUser = async () => {
     if (!recipientPhone.trim()) {
@@ -42,7 +63,6 @@ export default function TransferScreen() {
     setSearching(true);
     try {
       const url = `${BASE_URL}/api/transfer/lookup?phone=${encodeURIComponent(recipientPhone)}`;
-      console.log("🔍 Looking up user with URL:", url);
       
       const response = await fetch(url, {
         credentials: "include",
@@ -51,40 +71,21 @@ export default function TransferScreen() {
         }
       });
 
-      console.log("📡 Response status:", response.status);
-      console.log("📡 Response ok:", response.ok);
-      
-      // First, get the response as text
       const responseText = await response.text();
-      console.log("📡 Response text (first 500 chars):", responseText.substring(0, 500));
       
-      // Check if it's HTML (error page)
-      if (responseText.includes('<!DOCTYPE') || responseText.includes('<html') || responseText.startsWith('<')) {
-        console.error("❌ Server returned HTML error page");
-        
-        // Try to extract error message from HTML
-        let errorMessage = "Server error";
-        const match = responseText.match(/<title>(.*?)<\/title>/);
-        if (match) {
-          errorMessage = match[1];
-        }
-        
-        Alert.alert("Server Error", `Server returned: ${errorMessage}`);
+      if (responseText.includes('<!DOCTYPE') || responseText.includes('<html')) {
+        Alert.alert("Server Error", "Server error. Please try again.");
         return;
       }
       
-      // Try to parse as JSON
       let data;
       try {
         data = JSON.parse(responseText);
       } catch (parseError) {
-        console.error("❌ JSON parse error:", parseError);
-        console.error("❌ Full response:", responseText);
-        Alert.alert("Error", "Invalid response from server. Please try again.");
+        Alert.alert("Error", "Invalid response from server");
         return;
       }
 
-      // Check if unauthorized
       if (response.status === 401) {
         Alert.alert("Session Expired", "Please login again");
         router.push("/login/LoginScreen");
@@ -98,16 +99,8 @@ export default function TransferScreen() {
         Alert.alert("Not Found", data.message || "User not found");
       }
     } catch (error: any) {
-      console.error("Lookup error details:", error);
-      
-      // Network error handling
-      if (error.message?.includes('Network request failed')) {
-        Alert.alert("Connection Error", "Cannot connect to server. Please check your internet connection.");
-      } else if (error.message?.includes('JSON Parse error')) {
-        Alert.alert("Server Error", "Server returned invalid data. Please try again.");
-      } else {
-        Alert.alert("Error", "Failed to lookup user");
-      }
+      console.error("Lookup error:", error);
+      Alert.alert("Error", "Failed to lookup user");
     } finally {
       setSearching(false);
     }
@@ -143,16 +136,10 @@ export default function TransferScreen() {
         }
       );
 
-      console.log("📡 Transfer response status:", response.status);
-      
-      // First get as text
       const responseText = await response.text();
-      console.log("📡 Transfer response text:", responseText.substring(0, 500));
       
-      // Check if it's HTML
-      if (responseText.includes('<!DOCTYPE') || responseText.includes('<html') || responseText.startsWith('<')) {
-        console.error("❌ Transfer: Server returned HTML error page");
-        Alert.alert("Server Error", "Server error during transfer. Please try again.");
+      if (responseText.includes('<!DOCTYPE') || responseText.includes('<html')) {
+        Alert.alert("Server Error", "Server error during transfer");
         return;
       }
       
@@ -160,8 +147,7 @@ export default function TransferScreen() {
       try {
         data = JSON.parse(responseText);
       } catch (parseError) {
-        console.error("❌ Transfer JSON parse error:", parseError);
-        Alert.alert("Error", "Invalid response from server during transfer");
+        Alert.alert("Error", "Invalid response from server");
         return;
       }
 
@@ -185,12 +171,7 @@ export default function TransferScreen() {
       }
     } catch (error: any) {
       console.error("Transfer error:", error);
-      
-      if (error.message?.includes('Network request failed')) {
-        Alert.alert("Connection Error", "Cannot connect to server during transfer.");
-      } else {
-        Alert.alert("Error", "Transfer failed. Please try again.");
-      }
+      Alert.alert("Error", "Transfer failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -200,158 +181,173 @@ export default function TransferScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <Stack.Screen options={{ 
         headerShown: false,
-        statusBarStyle: 'dark',
-        statusBarBackgroundColor: '#fff',
+        statusBarStyle: 'light',
       }} />
       
-      {/* Custom Header */}
-      <View style={styles.header}>
-        <TouchableOpacity 
-          onPress={() => router.back()}
-          style={styles.backButton}
-        >
-          <Ionicons name="chevron-back" size={26} color="#000" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Transfer Money</Text>
-        <View style={styles.placeholder} />
-      </View>
-
-      <KeyboardAvoidingView
-        style={styles.keyboardContainer}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+      {/* Header with Gradient */}
+      <LinearGradient
+        colors={['#185FA5', '#0F4A7A']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.headerGradient}
       >
-        <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+        <View style={styles.header}>
+          <TouchableOpacity 
+            onPress={() => router.back()}
+            style={styles.backButton}
+          >
+            <Ionicons name="arrow-back" size={22} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Transfer Money</Text>
+          <View style={styles.placeholder} />
+        </View>
+      </LinearGradient>
+
+      {/* Content Sheet */}
+      <View style={styles.contentSheet}>
+        <View style={styles.dragPill} />
+
+        <KeyboardAvoidingView
+          style={styles.keyboardContainer}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
         >
-          {/* Recipient Section */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Send To</Text>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Phone Number</Text>
-              <View style={styles.phoneInput}>
-                <TextInput
-                  style={styles.phoneTextInput}
-                  placeholder="Enter recipient's phone number"
-                  value={recipientPhone}
-                  onChangeText={setRecipientPhone}
-                  keyboardType="phone-pad"
-                  autoCapitalize="none"
-                />
-                <TouchableOpacity
-                  style={styles.verifyButton}
-                  onPress={lookupUser}
-                  disabled={searching}
+          <ScrollView 
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+              {/* Recipient Section */}
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>Send To</Text>
+                
+                <View style={styles.phoneInputContainer}>
+                  <View style={styles.inputWrapper}>
+                    <Ionicons name="call-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter recipient's phone number"
+                      placeholderTextColor="#9CA3AF"
+                      value={recipientPhone}
+                      onChangeText={setRecipientPhone}
+                      keyboardType="phone-pad"
+                      autoCapitalize="none"
+                    />
+                    <TouchableOpacity
+                      style={styles.verifyButton}
+                      onPress={lookupUser}
+                      disabled={searching}
+                    >
+                      {searching ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={styles.verifyButtonText}>Verify</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {beneficiary && (
+                  <View style={styles.beneficiaryCard}>
+                    <LinearGradient
+                      colors={['#185FA5', '#0F4A7A']}
+                      style={styles.avatarGradient}
+                    >
+                      <Text style={styles.avatarText}>
+                        {beneficiary.name.charAt(0).toUpperCase()}
+                      </Text>
+                    </LinearGradient>
+                    <View style={styles.beneficiaryInfo}>
+                      <Text style={styles.beneficiaryName}>{beneficiary.name}</Text>
+                      <Text style={styles.beneficiaryPhone}>{beneficiary.phone}</Text>
+                    </View>
+                    <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.divider} />
+
+              {/* Amount Section */}
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>Amount</Text>
+                <View style={styles.amountWrapper}>
+                  <Text style={styles.currencySymbol}>₦</Text>
+                  <TextInput
+                    style={styles.amountInput}
+                    placeholder="0.00"
+                    placeholderTextColor="#9CA3AF"
+                    value={amount}
+                    onChangeText={setAmount}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.divider} />
+
+              {/* Note Section */}
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>Note (Optional)</Text>
+                <View style={styles.noteWrapper}>
+                  <Ionicons name="create-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.noteInput}
+                    placeholder="Add a note for this transfer"
+                    placeholderTextColor="#9CA3AF"
+                    value={note}
+                    onChangeText={setNote}
+                    multiline
+                    numberOfLines={3}
+                    textAlignVertical="top"
+                  />
+                </View>
+              </View>
+
+              {/* Transfer Button */}
+              <TouchableOpacity
+                style={[
+                  styles.transferButton,
+                  (!beneficiary || !amount || loading) && styles.transferButtonDisabled,
+                ]}
+                onPress={handleTransfer}
+                disabled={!beneficiary || !amount || loading}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={(!beneficiary || !amount) ? ['#D1D5DB', '#D1D5DB'] : ['#185FA5', '#0F4A7A']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.buttonGradient}
                 >
-                  {searching ? (
+                  {loading ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
-                    <Text style={styles.verifyButtonText}>Verify</Text>
+                    <>
+                      <Text style={styles.transferButtonText}>
+                        Transfer ₦{amount ? parseFloat(amount).toLocaleString() : "0"}
+                      </Text>
+                      <Ionicons name="send-outline" size={18} color="#fff" />
+                    </>
                   )}
-                </TouchableOpacity>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              {/* Security Note */}
+              <View style={styles.securityNote}>
+                <Ionicons name="shield-checkmark" size={14} color="#4CAF50" />
+                <Text style={styles.securityText}>
+                  Transfers are instant and secure
+                </Text>
               </View>
-            </View>
 
-            {beneficiary && (
-              <View style={styles.beneficiaryCard}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>
-                    {beneficiary.name.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-                <View style={styles.beneficiaryInfo}>
-                  <Text style={styles.beneficiaryName}>{beneficiary.name}</Text>
-                  <Text style={styles.beneficiaryPhone}>{beneficiary.phone}</Text>
-                </View>
-                <Ionicons name="checkmark-circle" size={24} color="#34C759" />
-              </View>
-            )}
-          </View>
-
-          {/* Amount Section */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Amount</Text>
-            <View style={styles.amountContainer}>
-              <Text style={styles.currencySymbol}>₦</Text>
-              <TextInput
-                style={styles.amountInput}
-                placeholder="0.00"
-                value={amount}
-                onChangeText={setAmount}
-                keyboardType="decimal-pad"
-                autoCapitalize="none"
-              />
-            </View>
-          </View>
-
-          {/* Note Section */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Note (Optional)</Text>
-            <TextInput
-              style={styles.noteInput}
-              placeholder="Add a note for this transfer"
-              value={note}
-              onChangeText={setNote}
-              multiline
-              numberOfLines={3}
-              textAlignVertical="top"
-            />
-          </View>
-
-          {/* Transfer Button */}
-          <TouchableOpacity
-            style={[
-              styles.transferButton,
-              (!beneficiary || !amount || loading) && styles.transferButtonDisabled,
-            ]}
-            onPress={handleTransfer}
-            disabled={!beneficiary || !amount || loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.transferButtonText}>
-                Transfer ₦{amount ? parseFloat(amount).toLocaleString() : "0.00"}
-              </Text>
-            )}
-          </TouchableOpacity>
-
-          {/* Security Note */}
-          <View style={styles.securityNote}>
-            <Ionicons name="shield-checkmark" size={16} color="#666" />
-            <Text style={styles.securityText}>
-              Transfers are instant and secure
-            </Text>
-          </View>
-
-          {/* Debug Button (temporary) */}
-          <TouchableOpacity 
-            style={styles.debugButton}
-            onPress={() => {
-              console.log("🔍 Current state:", {
-                beneficiary,
-                recipientPhone,
-                amount,
-                note
-              });
-              Alert.alert("Debug Info", JSON.stringify({
-                beneficiary,
-                recipientPhone,
-                amount,
-                note
-              }, null, 2));
-            }}
-          >
-            <Text style={styles.debugButtonText}>Debug Info</Text>
-          </TouchableOpacity>
-
-          {/* Bottom padding for safe area */}
-          <View style={styles.bottomPadding} />
-        </ScrollView>
-      </KeyboardAvoidingView>
+              {/* Bottom padding */}
+              <View style={styles.bottomPadding} />
+            </Animated.View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -359,97 +355,142 @@ export default function TransferScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: '#0f1923',
   },
-  keyboardContainer: {
-    flex: 1,
+  
+  // Header Gradient
+  headerGradient: {
+    paddingTop: Platform.OS === 'ios' ? 10 : 20,
+    paddingBottom: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-    marginTop: Platform.OS === 'ios' ? 0 : StatusBar.currentHeight || 0,
   },
   backButton: {
-    padding: 5,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.25)',
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: "600",
-    color: '#000',
+    color: '#fff',
   },
   placeholder: {
-    width: 26,
+    width: 38,
+  },
+  
+  // Content Sheet
+  contentSheet: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    marginTop: -20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  dragPill: {
+    width: 36,
+    height: 4,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 16,
+  },
+  
+  keyboardContainer: {
+    flex: 1,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
+    paddingHorizontal: 20,
     paddingBottom: 40,
   },
+  
+  // Section
   section: {
-    marginBottom: 30,
+    marginBottom: 20,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginBottom: 15,
-    color: "#111",
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 12,
   },
-  inputContainer: {
-    marginBottom: 15,
+  divider: {
+    height: 0.5,
+    backgroundColor: '#F0F0F0',
+    marginVertical: 20,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: "500",
+  
+  // Phone Input
+  phoneInputContainer: {
     marginBottom: 8,
-    color: "#666",
   },
-  phoneInput: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  phoneTextInput: {
-    flex: 1,
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 14,
+  },
+  inputIcon: {
     marginRight: 10,
   },
+  input: {
+    flex: 1,
+    paddingVertical: 14,
+    fontSize: 15,
+    color: '#111827',
+  },
   verifyButton: {
-    backgroundColor: "#007AFF",
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+    backgroundColor: '#185FA5',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 8,
-    minWidth: 80,
+    minWidth: 70,
     alignItems: "center",
   },
   verifyButtonText: {
     color: "#fff",
     fontWeight: "600",
-    fontSize: 14,
+    fontSize: 13,
   },
+  
+  // Beneficiary Card
   beneficiaryCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f8f9ff",
-    padding: 15,
+    backgroundColor: "#F9FAFB",
+    padding: 14,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#007AFF",
+    borderColor: "#E5E7EB",
+    marginTop: 12,
   },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#007AFF",
+  avatarGradient: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
@@ -463,81 +504,93 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   beneficiaryName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
-    color: "#111",
+    color: "#111827",
+    marginBottom: 2,
   },
   beneficiaryPhone: {
-    fontSize: 14,
-    color: "#666",
-    marginTop: 2,
+    fontSize: 13,
+    color: "#6B7280",
   },
-  amountContainer: {
-    flexDirection: "row",
-    alignItems: "center",
+  
+  // Amount
+  amountWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
-    padding: 15,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 14,
   },
   currencySymbol: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#111",
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#185FA5",
     marginRight: 8,
   },
   amountInput: {
     flex: 1,
-    fontSize: 20,
+    paddingVertical: 14,
+    fontSize: 18,
     fontWeight: "600",
-    color: "#111",
+    color: '#111827',
+  },
+  
+  // Note
+  noteWrapper: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 14,
   },
   noteInput: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    minHeight: 100,
+    flex: 1,
+    paddingVertical: 14,
+    fontSize: 15,
+    color: '#111827',
+    minHeight: 80,
   },
+  
+  // Transfer Button
   transferButton: {
-    backgroundColor: "#007AFF",
-    padding: 16,
     borderRadius: 12,
-    alignItems: "center",
-    marginVertical: 20,
+    overflow: 'hidden',
+    marginTop: 10,
+    marginBottom: 20,
   },
   transferButtonDisabled: {
-    backgroundColor: "#ccc",
+    opacity: 0.6,
+  },
+  buttonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 15,
+    gap: 8,
   },
   transferButtonText: {
     color: "#fff",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "600",
   },
+  
+  // Security Note
   securityNote: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 10,
-    marginBottom: 20,
+    gap: 6,
   },
   securityText: {
     fontSize: 12,
-    color: "#666",
-    marginLeft: 6,
+    color: "#6B7280",
   },
-  debugButton: {
-    backgroundColor: "#666",
-    padding: 12,
-    borderRadius: 8,
-    alignItems: "center",
-    marginTop: 10,
-  },
-  debugButtonText: {
-    color: "#fff",
-    fontSize: 14,
-  },
+  
   bottomPadding: {
     height: Platform.OS === 'ios' ? 40 : 20,
   },
