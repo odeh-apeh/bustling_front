@@ -131,13 +131,19 @@ export default function ProfileScreen() {
       title: "My Products",
       subtitle: "Manage your product listings",
       icon: "list-outline",
-      screen: "/market/SellScreen",
+      screen: "/market/ManageSellScreen",
     },
     {
       title: "My Services",
       subtitle: "Manage your service listings", 
       icon: "construct-outline",
-      screen: "/market/SellScreen",
+      screen: "/market/ManageSellScreen",
+    },
+    {
+      title: "My Delivery Companies",
+      subtitle: "Manage your delivery companies", 
+      icon: "list-outline",
+      screen: "/delivery/ManageDeliveryAgent",
     },
   ];
 

@@ -1,31 +1,34 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useToast } from "@/contexts/toast-content";
+import { BASE_URL, CoreService } from "@/helpers/core-service";
+import { FontAwesome5, Ionicons, MaterialIcons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  RefreshControl,
-  Alert,
-  TextInput,
-  Modal,
+  Stack,
+  useFocusEffect,
+  useLocalSearchParams,
+  useRouter,
+} from "expo-router";
+import React, { useCallback, useState } from "react";
+import {
   ActivityIndicator,
   Dimensions,
-  Switch,
-  Platform,
   FlatList,
-} from 'react-native';
-import { Stack, useRouter, useFocusEffect } from 'expo-router';
-import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BASE_URL } from '@/helpers/core-service';
-import { useToast } from '@/contexts/toast-content';
-import { StatusBar } from 'react-native';
+  Modal,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-const { width, height } = Dimensions.get('window');
-const isIOS = Platform.OS === 'ios';
+const { width, height } = Dimensions.get("window");
+const isIOS = Platform.OS === "ios";
 
 type DeliveryAgent = {
   id: string;
@@ -33,13 +36,13 @@ type DeliveryAgent = {
   coverage_area: string[] | string;
   vehicle_type?: string;
   description?: string;
-  status?: 'active' | 'inactive' | 'pending' | 'suspended';
+  status?: "active" | "inactive" | "pending" | "suspended";
   user_id: string;
   phone_number?: string;
   location?: string;
   state?: string;
   local_government?: string;
-  delivery_type?: 'intrastate' | 'interstate' | 'national';
+  delivery_types?: string[]
   rating?: number;
   total_deliveries?: number;
   created_at?: string;
@@ -61,26 +64,69 @@ type EditAgentForm = {
 export default function ManageDeliveryAgentScreen() {
   const router = useRouter();
   const { showToast } = useToast();
-  
+
   const [agents, setAgents] = useState<DeliveryAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedAgent, setSelectedAgent] = useState<DeliveryAgent | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<DeliveryAgent | null>(
+    null,
+  );
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [updating, setUpdating] = useState(false);
-  
+  const service: CoreService = new CoreService();
+
+  const params = useLocalSearchParams();
+  const getValidUserId = () => {
+  const id = Number(params?.userId);
+  return isNaN(id) ? null : id;
+};
+
+  useFocusEffect(
+    useCallback(() => {
+      const loadData = async () => {
+        const userId = getValidUserId();
+
+        if (userId) {
+          // Edit mode
+          await fetchCompanyById({
+            userId: Number(userId),
+            companyName: String(params?.companyName),
+          });
+        } else {
+          // Create mode
+          await fetchDeliveryCompanies();
+        }
+      };
+
+      loadData();
+    }, [params?.userId, params?.companyName]),
+  );
+
+  const reloadData = async () => {
+  const userId = getValidUserId();
+
+  if (userId) {
+    await fetchCompanyById({
+      userId,
+      companyName: String(params?.companyName),
+    });
+  } else {
+    await fetchDeliveryCompanies();
+  }
+};
+
   // Edit form state
   const [editForm, setEditForm] = useState<EditAgentForm>({
-    company_name: '',
-    coverage_area: '',
-    vehicle_type: '',
-    description: '',
-    phone_number: '',
-    location: '',
-    state: '',
-    local_government: '',
-    delivery_type: 'intrastate',
+    company_name: "",
+    coverage_area: "",
+    vehicle_type: "",
+    description: "",
+    phone_number: "",
+    location: "",
+    state: "",
+    local_government: "",
+    delivery_type: "intrastate",
   });
 
   // Fetch delivery companies
@@ -88,30 +134,33 @@ export default function ManageDeliveryAgentScreen() {
     try {
       setLoading(true);
       console.log("🔄 Fetching delivery companies...");
-      
+
       const response = await fetch(`${BASE_URL}/api/delivery/companies`, {
-        method: 'GET',
-        credentials: 'include',
+        method: "GET",
+        credentials: "include",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
       });
 
       const data = await response.json();
-      
-      console.log('📦 Delivery companies API response:', JSON.stringify(data, null, 2));
-      
+
+      console.log(
+        "📦 Delivery companies API response:",
+        JSON.stringify(data, null, 2),
+      );
+
       if (data.success && data.companies) {
         const transformedAgents = data.companies.map((agent: any) => {
           let coverageArea = agent.coverage_area || [];
-          if (typeof coverageArea === 'string') {
+          if (typeof coverageArea === "string") {
             try {
               coverageArea = JSON.parse(coverageArea);
             } catch (e) {
               coverageArea = [agent.coverage_area];
             }
           }
-          
+
           let location = "Location not specified";
           if (agent.local_government && agent.state) {
             location = `${agent.local_government}, ${agent.state}`;
@@ -122,7 +171,7 @@ export default function ManageDeliveryAgentScreen() {
           } else if (agent.location) {
             location = agent.location;
           }
-          
+
           return {
             id: agent.id?.toString(),
             company_name: agent.company_name || "Delivery Company",
@@ -135,42 +184,119 @@ export default function ManageDeliveryAgentScreen() {
             description: agent.description || "",
             status: agent.status || "active",
             user_id: agent.user_id,
-            delivery_type: agent.delivery_type || agent.coverage_type || 'intrastate',
+            delivery_types:
+              agent.delivery_types || [],
             full_name: agent.full_name,
             created_at: agent.created_at,
           };
         });
-        
+
         console.log("✅ Transformed agents:", transformedAgents.length);
         setAgents(transformedAgents);
       } else {
         console.error("❌ API error:", data.message);
-        showToast(data.message || "Failed to load delivery companies", 'error');
+        showToast(data.message || "Failed to load delivery companies", "error");
       }
     } catch (error) {
-      console.error('❌ Error fetching delivery companies:', error);
-      showToast("Failed to load delivery companies. Please check your connection.", 'error');
+      console.error("❌ Error fetching delivery companies:", error);
+      showToast(
+        "Failed to load delivery companies. Please check your connection.",
+        "error",
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
+  const fetchCompanyById = async ({
+    userId,
+    companyName,
+  }: {
+    userId: number;
+    companyName: string;
+  }) => {
+    setLoading(true);
+    const payload = {
+      userId: userId,
+      companyName: companyName,
+    };
+    try {
+      const res = await service.send(
+        "/api/delivery/get-company-by-id",
+        payload,
+      );
+      if (res.success && res.data) {
+        const transformedAgents = res.data.map((agent: any) => {
+          let coverageArea = agent.coverage_area || [];
+          if (typeof coverageArea === "string") {
+            try {
+              coverageArea = JSON.parse(coverageArea);
+            } catch (e) {
+              coverageArea = [agent.coverage_area];
+            }
+          }
+
+          let location = "Location not specified";
+          if (agent.local_government && agent.state) {
+            location = `${agent.local_government}, ${agent.state}`;
+          } else if (agent.local_government) {
+            location = agent.local_government;
+          } else if (agent.state) {
+            location = agent.state;
+          } else if (agent.location) {
+            location = agent.location;
+          }
+
+          return {
+            id: agent.id?.toString(),
+            company_name: agent.company_name || "Delivery Company",
+            coverage_area: coverageArea,
+            location: location,
+            state: agent.state || "",
+            local_government: agent.local_government || "",
+            phone_number: agent.phone_number || "Not provided",
+            vehicle_type: agent.vehicle_type || "Not specified",
+            description: agent.description || "",
+            status: agent.status || "active",
+            user_id: agent.user_id,
+            delivery_types:
+              agent.delivery_types || [],
+            full_name: agent.full_name,
+            created_at: agent.created_at,
+          };
+        });
+
+        console.log("✅ Transformed agents:", transformedAgents.length);
+        setAgents(transformedAgents);
+        setLoading(false);
+      } else {
+        showToast(res.message, "error");
+        setLoading(false);
+      }
+    } catch (e: any) {
+      showToast(e.message, "error");
+      setLoading(false);
+    }
+  };
+
   // Update delivery agent
   const updateAgent = async () => {
     if (!selectedAgent) return;
-    
+
     setUpdating(true);
     try {
       let coverageAreaArray: string[] = [];
       if (editForm.coverage_area) {
-        if (editForm.coverage_area.includes(',')) {
-          coverageAreaArray = editForm.coverage_area.split(',').map(item => item.trim());
+        if (editForm.coverage_area.includes(",")) {
+          coverageAreaArray = editForm.coverage_area
+            .split(",")
+            .map((item) => item.trim());
         } else {
           coverageAreaArray = [editForm.coverage_area];
         }
       }
-      
+
       const updateData = {
         companyName: editForm.company_name,
         fullName: editForm.company_name,
@@ -182,30 +308,33 @@ export default function ManageDeliveryAgentScreen() {
         vehicleType: editForm.vehicle_type,
         deliveryTypes: [editForm.delivery_type],
       };
-      
-      const response = await fetch(`${BASE_URL}/api/delivery-company/delivery/company/${selectedAgent.id}`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
+
+      const response = await fetch(
+        `${BASE_URL}/api/delivery-company/delivery/company/${selectedAgent.id}`,
+        {
+          method: "PUT",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify(updateData),
         },
-        body: JSON.stringify(updateData),
-      });
-      
+      );
+
       const data = await response.json();
-      
+
       if (data.success) {
-        showToast('Profile updated successfully!', 'success');
+        showToast("Profile updated successfully!", "success");
         setEditModalVisible(false);
-        fetchDeliveryCompanies();
+        reloadData();
       } else {
-        showToast(data.message || 'Failed to update profile', 'error');
-        console.log(data.message)
+        showToast(data.message || "Failed to update profile", "error");
+        console.log(data.message);
       }
     } catch (error: any) {
-      console.error('Error updating agent:', error);
-      showToast('Network error. Please try again.', 'error');
+      console.error("Error updating agent:", error);
+      showToast("Network error. Please try again.", "error");
     } finally {
       setUpdating(false);
     }
@@ -214,30 +343,33 @@ export default function ManageDeliveryAgentScreen() {
   // Delete delivery agent
   const deleteAgent = async () => {
     if (!selectedAgent) return;
-    
+
     setUpdating(true);
     try {
-      const response = await fetch(`${BASE_URL}/api/delivery-company/delivery/company/${selectedAgent.id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
+      const response = await fetch(
+        `${BASE_URL}/api/delivery-company/delivery/company/${selectedAgent.id}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
         },
-      });
-      
+      );
+
       const data = await response.json();
-      
+
       if (data.success) {
-        showToast('Delivery company deleted successfully!', 'success');
+        showToast("Delivery company deleted successfully!", "success");
         setDeleteConfirmVisible(false);
         setSelectedAgent(null);
-        fetchDeliveryCompanies();
+        reloadData();
       } else {
-        showToast(data.message || 'Failed to delete company', 'error');
+        showToast(data.message || "Failed to delete company", "error");
       }
     } catch (error: any) {
-      console.error('Error deleting agent:', error);
-      showToast('Network error. Please try again.', 'error');
+      console.error("Error deleting agent:", error);
+      showToast("Network error. Please try again.", "error");
     } finally {
       setUpdating(false);
     }
@@ -245,55 +377,61 @@ export default function ManageDeliveryAgentScreen() {
 
   // Toggle agent status
   const toggleAgentStatus = async (agent: DeliveryAgent) => {
-    const newStatus = agent.status === 'active' ? 'inactive' : 'active';
-    
+    const newStatus = agent.status === "active" ? "inactive" : "active";
+
     try {
-      const response = await fetch(`${BASE_URL}/api/delivery-company/delivery/company/update-status/${agent.id}`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
+      const response = await fetch(
+        `${BASE_URL}/api/delivery-company/delivery/company/update-status/${agent.id}`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({ status: newStatus }),
         },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      
+      );
+
       const data = await response.json();
-      
+
       if (data.success) {
-        showToast(`Company ${newStatus === 'active' ? 'activated' : 'deactivated'}!`, 'success');
-        fetchDeliveryCompanies();
+        showToast(
+          `Company ${newStatus === "active" ? "activated" : "deactivated"}!`,
+          "success",
+        );
+        reloadData();
       } else {
-        showToast(data.message || 'Failed to update status', 'error');
+        showToast(data.message || "Failed to update status", "error");
       }
     } catch (error: any) {
-      console.error('Error toggling status:', error);
-      showToast('Network error. Please try again.', 'error');
+      console.error("Error toggling status:", error);
+      showToast("Network error. Please try again.", "error");
     }
   };
 
   // Open edit modal
   const openEditModal = (agent: DeliveryAgent) => {
-    let coverageAreaString = '';
+    let coverageAreaString = "";
     if (agent.coverage_area) {
       if (Array.isArray(agent.coverage_area)) {
-        coverageAreaString = agent.coverage_area.join(', ');
-      } else if (typeof agent.coverage_area === 'string') {
+        coverageAreaString = agent.coverage_area.join(", ");
+      } else if (typeof agent.coverage_area === "string") {
         coverageAreaString = agent.coverage_area;
       }
     }
-    
+
     setSelectedAgent(agent);
     setEditForm({
-      company_name: agent.company_name || '',
+      company_name: agent.company_name || "",
       coverage_area: coverageAreaString,
-      vehicle_type: agent.vehicle_type || '',
-      description: agent.description || '',
-      phone_number: agent.phone_number || '',
-      location: agent.location || '',
-      state: agent.state || '',
-      local_government: agent.local_government || '',
-      delivery_type: agent.delivery_type || 'intrastate',
+      vehicle_type: agent.vehicle_type || "",
+      description: agent.description || "",
+      phone_number: agent.phone_number || "",
+      location: agent.location || "",
+      state: agent.state || "",
+      local_government: agent.local_government || "",
+      delivery_type: agent.delivery_types?.[0] ?? "intrastate"
     });
     setEditModalVisible(true);
   };
@@ -304,12 +442,6 @@ export default function ManageDeliveryAgentScreen() {
     setDeleteConfirmVisible(true);
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchDeliveryCompanies();
-    }, [])
-  );
-
   const onRefresh = () => {
     setRefreshing(true);
     fetchDeliveryCompanies();
@@ -317,37 +449,60 @@ export default function ManageDeliveryAgentScreen() {
 
   const getStatusColor = (status?: string) => {
     switch (status) {
-      case 'active': return '#10B981';
-      case 'inactive': return '#F59E0B';
-      case 'pending': return '#3B82F6';
-      case 'suspended': return '#EF4444';
-      default: return '#9CA3AF';
+      case "active":
+        return "#10B981";
+      case "inactive":
+        return "#F59E0B";
+      case "pending":
+        return "#3B82F6";
+      case "suspended":
+        return "#EF4444";
+      default:
+        return "#9CA3AF";
     }
   };
 
   const getStatusText = (status?: string) => {
     switch (status) {
-      case 'active': return 'Active';
-      case 'inactive': return 'Inactive';
-      case 'pending': return 'Pending Approval';
-      case 'suspended': return 'Suspended';
-      default: return 'Unknown';
+      case "active":
+        return "Active";
+      case "inactive":
+        return "Inactive";
+      case "pending":
+        return "Pending Approval";
+      case "suspended":
+        return "Suspended";
+      default:
+        return "Unknown";
     }
   };
 
-  const getDeliveryTypeText = (type?: string) => {
-    switch (type) {
-      case 'intrastate': return 'Intrastate (Within State)';
-      case 'interstate': return 'Interstate (Between States)';
-      case 'national': return 'National (Across Country)';
-      default: return 'Not specified';
-    }
-  };
+  const getDeliveryTypeText = (type?: string[]) => {
+  if (!type || !Array.isArray(type)) return "Not specified";
+
+  if (type.includes("intrastate")) {
+    return "Intrastate (Within State)";
+  }
+
+  if (type.includes("interstate")) {
+    return "Interstate (Between States)";
+  }
+
+  if (type.includes("national")) {
+    return "National (Across Country)";
+  }
+
+  return "Not specified";
+};
 
   const formatCoverageArea = (coverageArea: string[] | string) => {
-    if (!coverageArea) return 'Not specified';
+    if (
+      !coverageArea ||
+      (typeof coverageArea === "object" && !Array.isArray(coverageArea))
+    )
+      return "Not specified";
     if (Array.isArray(coverageArea)) {
-      return coverageArea.join(', ');
+      return coverageArea.join(", ");
     }
     return coverageArea;
   };
@@ -355,7 +510,7 @@ export default function ManageDeliveryAgentScreen() {
   const renderAgentCard = ({ item }: { item: DeliveryAgent }) => (
     <View style={styles.agentCard}>
       <LinearGradient
-        colors={['#FFFFFF', '#F9FAFB']}
+        colors={["#FFFFFF", "#F9FAFB"]}
         style={styles.cardGradient}
       >
         <View style={styles.cardHeader}>
@@ -366,9 +521,24 @@ export default function ManageDeliveryAgentScreen() {
           </View>
           <View style={styles.headerInfo}>
             <Text style={styles.companyName}>{item.company_name}</Text>
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) + '15' }]}>
-              <View style={[styles.statusDot, { backgroundColor: getStatusColor(item.status) }]} />
-              <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
+            <View
+              style={[
+                styles.statusBadge,
+                { backgroundColor: getStatusColor(item.status) + "15" },
+              ]}
+            >
+              <View
+                style={[
+                  styles.statusDot,
+                  { backgroundColor: getStatusColor(item.status) },
+                ]}
+              />
+              <Text
+                style={[
+                  styles.statusText,
+                  { color: getStatusColor(item.status) },
+                ]}
+              >
                 {getStatusText(item.status)}
               </Text>
             </View>
@@ -390,11 +560,15 @@ export default function ManageDeliveryAgentScreen() {
           </View>
           <View style={styles.detailRow}>
             <MaterialIcons name="map" size={16} color="#6B7280" />
-            <Text style={styles.detailText}>Type: {getDeliveryTypeText(item.delivery_type)}</Text>
+            <Text style={styles.detailText}>
+              Type: {getDeliveryTypeText(item.delivery_types)}
+            </Text>
           </View>
-          <View style={styles.detailRow}>
+          <View style={styles.detailRow}> 
             <Ionicons name="map-outline" size={16} color="#6B7280" />
-            <Text style={styles.detailText}>Area: {formatCoverageArea(item.coverage_area)}</Text>
+            <Text style={styles.detailText}>
+              Area: {formatCoverageArea(item.coverage_area)}
+            </Text>
           </View>
         </View>
 
@@ -406,21 +580,30 @@ export default function ManageDeliveryAgentScreen() {
             <Ionicons name="create-outline" size={16} color="#0066CC" />
             <Text style={styles.editBtnText}>Edit</Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             style={[styles.actionBtn, styles.statusActionBtn]}
             onPress={() => toggleAgentStatus(item)}
           >
-            <Ionicons 
-              name={item.status === 'active' ? "pause-circle-outline" : "play-circle-outline"} 
-              size={16} 
-              color={getStatusColor(item.status)} 
+            <Ionicons
+              name={
+                item.status === "active"
+                  ? "pause-circle-outline"
+                  : "play-circle-outline"
+              }
+              size={16}
+              color={getStatusColor(item.status)}
             />
-            <Text style={[styles.statusActionText, { color: getStatusColor(item.status) }]}>
-              {item.status === 'active' ? 'Deactivate' : 'Activate'}
+            <Text
+              style={[
+                styles.statusActionText,
+                { color: getStatusColor(item.status) },
+              ]}
+            >
+              {item.status === "active" ? "Deactivate" : "Activate"}
             </Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             style={[styles.actionBtn, styles.deleteBtn]}
             onPress={() => openDeleteConfirm(item)}
@@ -443,22 +626,25 @@ export default function ManageDeliveryAgentScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-        <Stack.Screen options={{headerShown:false}}></Stack.Screen>
-        <StatusBar backgroundColor={'#5a9eff'}></StatusBar>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+      <Stack.Screen options={{ headerShown: false }}></Stack.Screen>
+      <StatusBar backgroundColor={"#5a9eff"}></StatusBar>
       {/* Custom Header */}
       <LinearGradient
-        colors={['#3986f9', '#5a9eff']}
+        colors={["#3986f9", "#5a9eff"]}
         style={styles.headerGradient}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backButton}
+          >
             <Ionicons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Delivery Companies</Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.addButton}
-            onPress={() => router.push('/delivery/RegisterAgentScreen')}
+            onPress={() => router.push("/delivery/RegisterAgentScreen")}
           >
             <Ionicons name="add" size={24} color="#fff" />
           </TouchableOpacity>
@@ -472,14 +658,15 @@ export default function ManageDeliveryAgentScreen() {
           </View>
           <Text style={styles.emptyTitle}>No Delivery Companies</Text>
           <Text style={styles.emptyText}>
-            No delivery companies registered yet. Add your first delivery company to get started!
+            No delivery companies registered yet. Add your first delivery
+            company to get started!
           </Text>
           <TouchableOpacity
             style={styles.registerButton}
-            onPress={() => router.push('/delivery/RegisterAgentScreen')}
+            onPress={() => router.push("/delivery/RegisterAgentScreen")}
           >
             <LinearGradient
-              colors={['#3986f9', '#5a9eff']}
+              colors={["#3986f9", "#5a9eff"]}
               style={styles.registerGradient}
             >
               <Ionicons name="add-circle-outline" size={20} color="#fff" />
@@ -507,7 +694,11 @@ export default function ManageDeliveryAgentScreen() {
         transparent={true}
         onRequestClose={() => setEditModalVisible(false)}
       >
-        <BlurView intensity={isIOS ? 40 : 70} tint="dark" style={StyleSheet.absoluteFillObject}>
+        <BlurView
+          intensity={isIOS ? 40 : 70}
+          tint="dark"
+          style={StyleSheet.absoluteFillObject}
+        >
           <TouchableOpacity
             style={styles.modalBackdrop}
             activeOpacity={1}
@@ -515,7 +706,7 @@ export default function ManageDeliveryAgentScreen() {
           />
           <View style={styles.modalContent}>
             <LinearGradient
-              colors={['#3986f9', '#5a9eff']}
+              colors={["#3986f9", "#5a9eff"]}
               style={styles.modalHeaderGradient}
             >
               <Text style={styles.modalTitle}>Edit Company</Text>
@@ -523,92 +714,127 @@ export default function ManageDeliveryAgentScreen() {
                 <Ionicons name="close" size={24} color="#fff" />
               </TouchableOpacity>
             </LinearGradient>
-            
-            <ScrollView showsVerticalScrollIndicator={false} style={styles.modalBody}>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              style={styles.modalBody}
+            >
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Company Name *</Text>
                 <TextInput
                   style={styles.input}
                   value={editForm.company_name}
-                  onChangeText={(text) => setEditForm({ ...editForm, company_name: text })}
+                  onChangeText={(text) =>
+                    setEditForm({ ...editForm, company_name: text })
+                  }
                   placeholder="Enter company name"
                   placeholderTextColor="#9CA3AF"
                 />
               </View>
-              
+
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Phone Number</Text>
                 <TextInput
                   style={styles.input}
                   value={editForm.phone_number}
-                  onChangeText={(text) => setEditForm({ ...editForm, phone_number: text })}
+                  onChangeText={(text) =>
+                    setEditForm({ ...editForm, phone_number: text })
+                  }
                   placeholder="Enter phone number"
                   keyboardType="phone-pad"
                   placeholderTextColor="#9CA3AF"
                 />
               </View>
-              
+
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Vehicle Type</Text>
                 <TextInput
                   style={styles.input}
                   value={editForm.vehicle_type}
-                  onChangeText={(text) => setEditForm({ ...editForm, vehicle_type: text })}
+                  onChangeText={(text) =>
+                    setEditForm({ ...editForm, vehicle_type: text })
+                  }
                   placeholder="e.g., Motorcycle, Car, Van, Truck"
                   placeholderTextColor="#9CA3AF"
                 />
               </View>
-              
+
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Delivery Type</Text>
                 <View style={styles.optionsGrid}>
                   <TouchableOpacity
                     style={[
                       styles.optionChip,
-                      editForm.delivery_type === 'intrastate' && styles.optionChipActive,
+                      editForm.delivery_type === "intrastate" &&
+                        styles.optionChipActive,
                     ]}
-                    onPress={() => setEditForm({ ...editForm, delivery_type: 'intrastate' })}
+                    onPress={() =>
+                      setEditForm({ ...editForm, delivery_type: "intrastate" })
+                    }
                   >
-                    <Text style={[
-                      styles.optionChipText,
-                      editForm.delivery_type === 'intrastate' && styles.optionChipTextActive,
-                    ]}>Intrastate</Text>
+                    <Text
+                      style={[
+                        styles.optionChipText,
+                        editForm.delivery_type === "intrastate" &&
+                          styles.optionChipTextActive,
+                      ]}
+                    >
+                      Intrastate
+                    </Text>
                   </TouchableOpacity>
-                  
+
                   <TouchableOpacity
                     style={[
                       styles.optionChip,
-                      editForm.delivery_type === 'interstate' && styles.optionChipActive,
+                      editForm.delivery_type === "interstate" &&
+                        styles.optionChipActive,
                     ]}
-                    onPress={() => setEditForm({ ...editForm, delivery_type: 'interstate' })}
+                    onPress={() =>
+                      setEditForm({ ...editForm, delivery_type: "interstate" })
+                    }
                   >
-                    <Text style={[
-                      styles.optionChipText,
-                      editForm.delivery_type === 'interstate' && styles.optionChipTextActive,
-                    ]}>Interstate</Text>
+                    <Text
+                      style={[
+                        styles.optionChipText,
+                        editForm.delivery_type === "interstate" &&
+                          styles.optionChipTextActive,
+                      ]}
+                    >
+                      Interstate
+                    </Text>
                   </TouchableOpacity>
-                  
+
                   <TouchableOpacity
                     style={[
                       styles.optionChip,
-                      editForm.delivery_type === 'national' && styles.optionChipActive,
+                      editForm.delivery_type === "national" &&
+                        styles.optionChipActive,
                     ]}
-                    onPress={() => setEditForm({ ...editForm, delivery_type: 'national' })}
+                    onPress={() =>
+                      setEditForm({ ...editForm, delivery_type: "national" })
+                    }
                   >
-                    <Text style={[
-                      styles.optionChipText,
-                      editForm.delivery_type === 'national' && styles.optionChipTextActive,
-                    ]}>National</Text>
+                    <Text
+                      style={[
+                        styles.optionChipText,
+                        editForm.delivery_type === "national" &&
+                          styles.optionChipTextActive,
+                      ]}
+                    >
+                      National
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
-              
+
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Coverage Area</Text>
                 <TextInput
                   style={styles.input}
                   value={editForm.coverage_area}
-                  onChangeText={(text) => setEditForm({ ...editForm, coverage_area: text })}
+                  onChangeText={(text) =>
+                    setEditForm({ ...editForm, coverage_area: text })
+                  }
                   placeholder="e.g., Lagos Mainland, Abuja FCT (comma-separated)"
                   placeholderTextColor="#9CA3AF"
                 />
@@ -616,60 +842,68 @@ export default function ManageDeliveryAgentScreen() {
                   Enter multiple areas separated by commas
                 </Text>
               </View>
-              
+
               <View style={styles.formGroup}>
                 <Text style={styles.label}>State</Text>
                 <TextInput
                   style={styles.input}
                   value={editForm.state}
-                  onChangeText={(text) => setEditForm({ ...editForm, state: text })}
+                  onChangeText={(text) =>
+                    setEditForm({ ...editForm, state: text })
+                  }
                   placeholder="Enter state"
                   placeholderTextColor="#9CA3AF"
                 />
               </View>
-              
+
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Local Government Area</Text>
                 <TextInput
                   style={styles.input}
                   value={editForm.local_government}
-                  onChangeText={(text) => setEditForm({ ...editForm, local_government: text })}
+                  onChangeText={(text) =>
+                    setEditForm({ ...editForm, local_government: text })
+                  }
                   placeholder="Enter LGA"
                   placeholderTextColor="#9CA3AF"
                 />
               </View>
-              
+
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Location/Address</Text>
                 <TextInput
                   style={styles.input}
                   value={editForm.location}
-                  onChangeText={(text) => setEditForm({ ...editForm, location: text })}
+                  onChangeText={(text) =>
+                    setEditForm({ ...editForm, location: text })
+                  }
                   placeholder="Enter your full address"
                   placeholderTextColor="#9CA3AF"
                 />
               </View>
-              
+
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Description</Text>
                 <TextInput
                   style={[styles.input, styles.textArea]}
                   value={editForm.description}
-                  onChangeText={(text) => setEditForm({ ...editForm, description: text })}
+                  onChangeText={(text) =>
+                    setEditForm({ ...editForm, description: text })
+                  }
                   placeholder="Describe your delivery services"
                   multiline
                   numberOfLines={4}
                   placeholderTextColor="#9CA3AF"
                 />
               </View>
-              
+
               <TouchableOpacity
                 style={styles.updateButton}
                 onPress={updateAgent}
                 disabled={updating}
               >
                 <LinearGradient
-                  colors={['#3986f9', '#5a9eff']}
+                  colors={["#3986f9", "#5a9eff"]}
                   style={styles.updateButtonGradient}
                 >
                   {updating ? (
@@ -691,7 +925,11 @@ export default function ManageDeliveryAgentScreen() {
         transparent={true}
         onRequestClose={() => setDeleteConfirmVisible(false)}
       >
-        <BlurView intensity={isIOS ? 40 : 70} tint="dark" style={StyleSheet.absoluteFillObject}>
+        <BlurView
+          intensity={isIOS ? 40 : 70}
+          tint="dark"
+          style={StyleSheet.absoluteFillObject}
+        >
           <TouchableOpacity
             style={styles.modalBackdrop}
             activeOpacity={1}
@@ -700,7 +938,7 @@ export default function ManageDeliveryAgentScreen() {
           <View style={styles.confirmModalContent}>
             <View style={styles.confirmIconContainer}>
               <LinearGradient
-                colors={['#EF4444', '#DC2626']}
+                colors={["#EF4444", "#DC2626"]}
                 style={styles.confirmIconGradient}
               >
                 <Ionicons name="warning" size={32} color="#fff" />
@@ -708,9 +946,10 @@ export default function ManageDeliveryAgentScreen() {
             </View>
             <Text style={styles.confirmTitle}>Delete Company?</Text>
             <Text style={styles.confirmText}>
-              Are you sure you want to delete &quot;{selectedAgent?.company_name}&quot;? This action cannot be undone.
+              Are you sure you want to delete &quot;
+              {selectedAgent?.company_name}&quot;? This action cannot be undone.
             </Text>
-            
+
             <View style={styles.confirmButtons}>
               <TouchableOpacity
                 style={styles.confirmCancelBtn}
@@ -718,14 +957,14 @@ export default function ManageDeliveryAgentScreen() {
               >
                 <Text style={styles.confirmCancelText}>Cancel</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
                 style={styles.confirmDeleteBtn}
                 onPress={deleteAgent}
                 disabled={updating}
               >
                 <LinearGradient
-                  colors={['#EF4444', '#DC2626']}
+                  colors={["#EF4444", "#DC2626"]}
                   style={styles.confirmDeleteGradient}
                 >
                   {updating ? (
@@ -746,56 +985,56 @@ export default function ManageDeliveryAgentScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: "#F8FAFC",
   },
   headerGradient: {
-    paddingTop: Platform.OS === 'ios' ? 8 : 40,
+    paddingTop: Platform.OS === "ios" ? 8 : 40,
     paddingBottom: 12,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
     elevation: 4,
-    shadowColor: '#3986f9',
+    shadowColor: "#3986f9",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
   },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   headerTitle: {
     fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
+    fontWeight: "700",
+    color: "#fff",
   },
   addButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#F8FAFC",
   },
   loadingText: {
     marginTop: 12,
     fontSize: 14,
-    color: '#6B7280',
+    color: "#6B7280",
   },
   listContent: {
     padding: 16,
@@ -804,8 +1043,8 @@ const styles = StyleSheet.create({
   agentCard: {
     marginBottom: 16,
     borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
+    overflow: "hidden",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
@@ -815,8 +1054,8 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 12,
   },
   avatarContainer: {
@@ -826,23 +1065,23 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: '#E6F2FF',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#E6F2FF",
+    justifyContent: "center",
+    alignItems: "center",
   },
   headerInfo: {
     flex: 1,
   },
   companyName: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#1F2937',
+    fontWeight: "700",
+    color: "#1F2937",
     marginBottom: 4,
   },
   statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
@@ -855,65 +1094,65 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   cardDetails: {
     marginBottom: 12,
   },
   detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 8,
     gap: 8,
   },
   detailText: {
     fontSize: 13,
-    color: '#6B7280',
+    color: "#6B7280",
     flex: 1,
   },
   cardActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    borderTopColor: "#F3F4F6",
   },
   actionBtn: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 8,
     borderRadius: 8,
     gap: 6,
   },
   editBtn: {
-    backgroundColor: '#E6F2FF',
+    backgroundColor: "#E6F2FF",
   },
   editBtnText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#0066CC',
+    fontWeight: "600",
+    color: "#0066CC",
   },
   statusActionBtn: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: "#F3F4F6",
   },
   statusActionText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   deleteBtn: {
-    backgroundColor: '#FEE2E2',
+    backgroundColor: "#FEE2E2",
   },
   deleteBtnText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#EF4444',
+    fontWeight: "600",
+    color: "#EF4444",
   },
   emptyContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     paddingHorizontal: 32,
   },
   emptyIconContainer: {
@@ -921,63 +1160,63 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 20,
-    fontWeight: '700',
-    color: '#1F2937',
+    fontWeight: "700",
+    color: "#1F2937",
     marginBottom: 8,
   },
   emptyText: {
     fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
+    color: "#6B7280",
+    textAlign: "center",
     marginBottom: 24,
     lineHeight: 20,
   },
   registerButton: {
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   registerGradient: {
-    flexDirection: 'row',
+    flexDirection: "row",
     paddingHorizontal: 20,
     paddingVertical: 12,
-    alignItems: 'center',
+    alignItems: "center",
     gap: 8,
   },
   registerButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   helperText: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: "#9CA3AF",
     marginTop: 4,
   },
   modalBackdrop: {
     flex: 1,
   },
   modalContent: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: height * 0.9,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   modalHeaderGradient: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: 20,
     paddingVertical: 16,
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
+    fontWeight: "700",
+    color: "#fff",
   },
   modalBody: {
     padding: 20,
@@ -987,72 +1226,72 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
+    fontWeight: "500",
+    color: "#374151",
     marginBottom: 6,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: "#E5E7EB",
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
-    color: '#1F2937',
-    backgroundColor: '#fff',
+    color: "#1F2937",
+    backgroundColor: "#fff",
   },
   textArea: {
     height: 80,
-    textAlignVertical: 'top',
+    textAlignVertical: "top",
   },
   optionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
   },
   optionChip: {
     flex: 1,
     paddingVertical: 10,
     borderRadius: 10,
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
   },
   optionChipActive: {
-    backgroundColor: '#0066CC',
+    backgroundColor: "#0066CC",
   },
   optionChipText: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#6B7280',
+    fontWeight: "500",
+    color: "#6B7280",
   },
   optionChipTextActive: {
-    color: '#fff',
+    color: "#fff",
   },
   updateButton: {
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: "hidden",
     marginTop: 12,
     marginBottom: 20,
   },
   updateButtonGradient: {
     paddingVertical: 14,
-    alignItems: 'center',
+    alignItems: "center",
   },
   updateButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   confirmModalContent: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
+    position: "absolute",
+    top: "50%",
+    left: "50%",
     transform: [{ translateX: -width * 0.4 }, { translateY: -100 }],
     width: width * 0.8,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 20,
     padding: 20,
-    alignItems: 'center',
+    alignItems: "center",
   },
   confirmIconContainer: {
     marginBottom: 16,
@@ -1061,49 +1300,49 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   confirmTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#1F2937',
+    fontWeight: "700",
+    color: "#1F2937",
     marginBottom: 8,
   },
   confirmText: {
     fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
+    color: "#6B7280",
+    textAlign: "center",
     marginBottom: 24,
     lineHeight: 20,
   },
   confirmButtons: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
-    width: '100%',
+    width: "100%",
   },
   confirmCancelBtn: {
     flex: 1,
     paddingVertical: 10,
     borderRadius: 10,
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
   },
   confirmCancelText: {
-    color: '#6B7280',
-    fontWeight: '600',
+    color: "#6B7280",
+    fontWeight: "600",
   },
   confirmDeleteBtn: {
     flex: 1,
     borderRadius: 10,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   confirmDeleteGradient: {
     paddingVertical: 10,
-    alignItems: 'center',
+    alignItems: "center",
   },
   confirmDeleteText: {
-    color: '#fff',
-    fontWeight: '600',
+    color: "#fff",
+    fontWeight: "600",
   },
 });

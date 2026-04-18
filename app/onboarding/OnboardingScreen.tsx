@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { View, Text, Image, StyleSheet, Dimensions, TouchableOpacity, Animated } from "react-native";
 import Swiper from "react-native-swiper";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -16,10 +16,28 @@ export default function OnboardingScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const autoSlideRef = useRef<any>(null);
   
+  
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const buttonScale = useRef(new Animated.Value(1)).current;
+
+
+  const checkIfCompletedOnBoarding = async () => {
+  try {
+    const hasCompleted = await AsyncStorage.getItem("hasCompletedOnboarding");
+
+    if (hasCompleted === "true") {
+      router.replace("/login/LoginScreen");
+    }
+  } catch (error) {
+    console.log("Error checking onboarding:", error);
+  }
+ };
+
+    useEffect(() => {
+      checkIfCompletedOnBoarding();
+    }, []);
 
   useEffect(() => {
     startAutoSlide();
@@ -53,6 +71,8 @@ export default function OnboardingScreen() {
     }
     restartAutoSlide();
   }, [currentIndex]);
+
+  
 
   const startAutoSlide = () => {
     autoSlideRef.current = setInterval(() => {
@@ -121,6 +141,8 @@ export default function OnboardingScreen() {
     await AsyncStorage.setItem('hasCompletedOnboarding', 'true');
     router.push("/auth/account-support");
   };
+
+
 
   return (
     <View style={styles.container}>

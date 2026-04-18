@@ -1,5 +1,5 @@
-import React, { useRef, useEffect, useState } from "react";
-import { Stack, useRouter } from "expo-router";
+import React, { useRef, useEffect, useState, useCallback } from "react";
+import { Stack, useFocusEffect, useRouter } from "expo-router";
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   Platform,
   StatusBar,
   ActivityIndicator,
+  BackHandler,
 } from "react-native";
 import { Ionicons, Feather, MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -20,6 +21,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { BASE_URL, CoreService } from "@/helpers/core-service";
 import { useToast } from "@/contexts/toast-content";
+import ConfirmationModal from "@/components/confirmation";
 
 const { width, height } = Dimensions.get("window");
 const isIOS = Platform.OS === 'ios';
@@ -99,6 +101,8 @@ export default function HomeScreen() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const service: CoreService = new CoreService();
   const { showToast, isMarketVisible, setMarketVisible } = useToast();
+  const [open, setOpen] = useState<boolean>(false);
+
 
   const fetchUserProfile = async () => {
     try {
@@ -243,6 +247,23 @@ export default function HomeScreen() {
     });
   };
 
+  useFocusEffect(
+      useCallback(() => {
+        const onBackPress = () => {
+          setOpen(true);
+          
+          // Return true to prevent default behavior, false to allow it
+          return true;
+        };
+        
+        const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+        
+        return () => {
+          subscription.remove();
+        };
+      }, [])
+    );
+
   const handleLogout = async () => {
     try {
       await fetch(`${BASE_URL}/api/auth/logout`, {
@@ -296,7 +317,7 @@ export default function HomeScreen() {
                 gap:'10',
                 flexDirection: 'row',
               }}>
-                <TouchableOpacity style={styles.glassBtn}>
+                <TouchableOpacity style={styles.glassBtn} onPress={() => router.push('/profile/ProfileScreen')}>
                 <View style={styles.profileIcon}>
                   <Text style={styles.profileInitial}>
                     {user?.user.name?.charAt(0) || 'U'} 
@@ -325,7 +346,7 @@ export default function HomeScreen() {
                 
                 <TouchableOpacity 
                   style={styles.glassBtnSmall}
-                  onPress={handleLogout}
+                  onPress={() => setOpen(true)}
                 >
                   <Ionicons name="log-out-outline" size={20} color="#fff" />
                 </TouchableOpacity>
@@ -631,6 +652,8 @@ export default function HomeScreen() {
             </>
           )}
         </View>
+        <ConfirmationModal visible={open} onClose={() => setOpen(false)} onConfirm={() => handleLogout()} type={'warning'}
+          confirmText="log out" cancelText="Cancel" message="Are you sure you want to log out?" title="Confirmation" loading={loading}></ConfirmationModal>
       </SafeAreaView>
     </>
   );

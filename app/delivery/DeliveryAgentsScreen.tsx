@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, use } from "react";
 import { Stack, useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import {
   View,
@@ -41,6 +41,7 @@ type DeliveryAgent = {
   local_government?: string;
   has_location?: boolean;
   coverage_type?: string;
+  delivery_types?: string;
 };
 
 const NIGERIAN_STATES = [
@@ -131,6 +132,7 @@ export default function DeliveryAgentsScreen() {
             description: agent.description || agent.about || "",
             status: agent.status || "active",
             user_id: agent.user_id || agent.userId || "",
+            delivery_types: agent.delivery_types || ""
           };
         });
         
@@ -233,6 +235,18 @@ export default function DeliveryAgentsScreen() {
     });
   };
 
+  const handleEditDelivery = async (index: number) => {
+    const userId = deliveryAgents.find((userId) => userId)?.user_id;
+    const company = deliveryAgents[index].company_name;
+    router.push({
+      pathname:"/delivery/ManageDeliveryAgent",
+      params:{
+        userId: userId,
+        companyName: company
+      }
+    })
+  }
+
   const getDeliveryTypeText = (coverage: string) => {
     if (!coverage || coverage === "Standard Delivery") return "Standard";
     const coverageLower = coverage.toLowerCase();
@@ -243,6 +257,7 @@ export default function DeliveryAgentsScreen() {
     if (coverageLower.includes('national')) return "National";
     return coverage.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
   };
+
 
   const getDeliveryTypeColor = (coverage: string) => {
     if (!coverage) return "#10B981";
@@ -278,9 +293,12 @@ export default function DeliveryAgentsScreen() {
     });
   };
 
-  const renderAgentItem = (agent: DeliveryAgent) => (
+  const renderAgentItem = (agent: DeliveryAgent, index: number) => (
+    <TouchableOpacity
+    key={agent.id}
+     onPress={() => handleEditDelivery(index)}>
     <LinearGradient
-      key={agent.id}
+      
       colors={['#FFFFFF', '#F9FAFB']}
       style={styles.agentCard}
     >
@@ -339,7 +357,7 @@ export default function DeliveryAgentsScreen() {
           {agent.coverage_area && (
             <View style={[styles.coverageBadge, { backgroundColor: getDeliveryTypeColor(agent.coverage_area) }]}>
               <Text style={styles.coverageText}>
-                {getDeliveryTypeText(agent.coverage_area)}
+                {agent.delivery_types}
               </Text>
             </View>
           )}
@@ -377,6 +395,7 @@ export default function DeliveryAgentsScreen() {
         </View>
       </View>
     </LinearGradient>
+    </TouchableOpacity>
   );
 
   if (loading && !refreshing) {
@@ -528,7 +547,7 @@ export default function DeliveryAgentsScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            filteredAgents.map((agent) => renderAgentItem(agent))
+            filteredAgents.map((agent, index) => renderAgentItem(agent, index))
           )}
           
           <View style={styles.bottomPadding} />
