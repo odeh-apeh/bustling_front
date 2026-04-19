@@ -28,6 +28,12 @@ interface ConfirmationModalProps {
 const isIOS = Platform.OS === "ios";
 const { width } = Dimensions.get("window");
 
+/**
+ * 
+ * Displays a customizable alert Modal 
+ * @returns - Function
+ */
+
 const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   visible,
   title = "Are you sure?",

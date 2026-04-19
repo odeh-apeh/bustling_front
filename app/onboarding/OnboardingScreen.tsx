@@ -28,7 +28,7 @@ export default function OnboardingScreen() {
     const hasCompleted = await AsyncStorage.getItem("hasCompletedOnboarding");
 
     if (hasCompleted === "true") {
-      router.replace("/login/LoginScreen");
+      router.replace("/onboarding/OnboardingSignUpScreen");
     }
   } catch (error) {
     console.log("Error checking onboarding:", error);

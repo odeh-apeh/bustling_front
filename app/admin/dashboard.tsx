@@ -22,6 +22,7 @@ import { TicketType } from '../support/CustomerServiceScreen';
 import AdminTicketsScreen from './issues';
 import TwoFactorModal from '@/components/two-factor';
 import { Admin } from './AdminManageScreen';
+import ConfirmationModal from '../modal';
 
 const { width, height } = Dimensions.get('window');
 const isSmallDevice = width < 375;
@@ -100,6 +101,7 @@ export default function AdminDashboard() {
   const [isViewingTickets, setViewingTickets] = useState<boolean>(false);
   const [twoFactorModal, setTwoFactorModal] = useState<boolean>(false);
   const [admin, setAdmin] = useState<Admin>();
+  const [open, setOpen] = useState(false);
   
 
   const { showToast } = useToast();
@@ -189,13 +191,7 @@ export default function AdminDashboard() {
   };
 
   const handleLogout = async () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Logout',
-        style: 'destructive',
-        onPress: async () => {
-          try {
+    try {
             await fetch(`${API_URL}/api/admin/logout`, { method: 'POST' });
           } catch (error) {
             console.error('Logout error:', error);
@@ -203,9 +199,6 @@ export default function AdminDashboard() {
           await AsyncStorage.removeItem('adminUser');
           await AsyncStorage.removeItem('adminToken');
           router.replace('/auth/account-support');
-        },
-      },
-    ]);
   };
 
   //=============================================//
@@ -244,6 +237,21 @@ export default function AdminDashboard() {
   }
 }
 
+const logoutPromts = {
+    title: 'Logout',
+    message: 'Are you sure you want to logout of the admin panel?',
+    buttons: [
+      {
+        text: 'Cancel',
+      },
+      {
+        text: 'Logout',
+      },
+    ],
+    onConfirm: () => handleLogout(),
+    onClose:() => setOpen(false)
+  }
+
   
   //=============================================//
 
@@ -264,7 +272,7 @@ export default function AdminDashboard() {
 
   if(twoFactorModal){
     return (
-     <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+     <View style={{ display:'flex', justifyContent: "center", alignItems: "center" }}>
           {admin && (
         <TwoFactorModal visible={twoFactorModal} email={admin.email} onVerify={(otp) => verifyOtp(otp)} onClose={() => {}} resendOTP={() => sendOtp()}></TwoFactorModal>
       )}
@@ -313,7 +321,7 @@ export default function AdminDashboard() {
                 <Text style={styles.roleChipText}>{adminUser?.role || 'System Admin'}</Text>
               </View>
             </View>
-            <TouchableOpacity onPress={handleLogout} style={styles.refreshBtn}>
+            <TouchableOpacity onPress={() => setOpen(true)} style={styles.refreshBtn}>
               <Ionicons name="log-out" size={18} color="rgba(255,255,255,0.9)" />
             </TouchableOpacity>
           </View>
@@ -421,6 +429,8 @@ export default function AdminDashboard() {
         )}
         <Ionicons name="chatbubble-ellipses" size={22} color="#fff" />
       </TouchableOpacity>
+      <ConfirmationModal visible={open} message={logoutPromts.message} title={logoutPromts.title} cancelText={logoutPromts.buttons[0].text} confirmText={logoutPromts.buttons[1].text} onConfirm={logoutPromts.onConfirm} onCancel={logoutPromts.onClose} variant={'danger'}></ConfirmationModal>
+      
     </SafeAreaView>
   );
 }

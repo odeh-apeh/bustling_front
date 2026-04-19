@@ -20,6 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BASE_URL } from "@/helpers/core-service";
+import { useToast } from "@/contexts/toast-content";
 
 const { width } = Dimensions.get("window");
 const isIOS = Platform.OS === 'ios';
@@ -42,6 +43,7 @@ export default function SignupScreen() {
   const [gettingLocation, setGettingLocation] = useState(true);
   const [manualLocationVisible, setManualLocationVisible] = useState(false);
   const [manualLocationInput, setManualLocationInput] = useState("");
+  const {showToast} = useToast();
   
   // Focus states for inputs
   const [focusedField, setFocusedField] = useState<string | null>(null);
@@ -119,9 +121,9 @@ export default function SignupScreen() {
         location: loc,
       }));
     } catch (err) {
-      Alert.alert(
-        "Location Error",
-        "Unable to get location. You can manually enter your city."
+      showToast(
+        "Unable to get location. You can manually enter your city.",
+        "error"
       );
     } finally {
       setGettingLocation(false);
@@ -130,7 +132,7 @@ export default function SignupScreen() {
 
   const handleManualLocationSubmit = () => {
     if (!manualLocationInput.trim()) {
-      Alert.alert("Error", "Please enter a valid location.");
+      showToast("Please enter a valid location.", "error");
       return;
     }
 
@@ -196,13 +198,13 @@ export default function SignupScreen() {
       const data = await response.json();
 
       if (data.success) {
-        Alert.alert("Success", "Account created successfully!");
+        showToast("Account created successfully!", "success");
         router.replace("/home/Homescreen");
       } else {
-        Alert.alert("Signup Failed", data.message || "Something went wrong.");
+        showToast(data.message || "Something went wrong.", "error");
       }
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Network error.");
+      showToast(err.message || "Network error.", "error");
     } finally {
       setIsLoading(false);
     }

@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BASE_URL } from '@/helpers/core-service';
 import { useToast } from '@/contexts/toast-content';
+import ConfirmationModal from '../modal';
 
 const { width } = Dimensions.get('window');
 
@@ -44,7 +45,7 @@ export default function AccountSupportScreen() {
       return;
     }
 
-    if (accessCode === ACCESS_CODE) {
+    if (accessCode.trim() === ACCESS_CODE) {
       setStep('login');
       setAccessCode('');
     } else {
@@ -75,7 +76,7 @@ export default function AccountSupportScreen() {
       });
 
       const data = await response.json();
-      console.log('📦 Admin login response:', data);
+      // console.log('📦 Admin login response:', data);
       
       if (response.ok) {
         // Store admin session from backend response
@@ -111,6 +112,8 @@ export default function AccountSupportScreen() {
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword);
   };
+
+  
 
   return (
     <SafeAreaView style={styles.safeArea}>
