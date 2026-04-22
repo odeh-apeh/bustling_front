@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,11 +10,18 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BASE_URL } from '@/helpers/core-service';
+import { BASE_URL, CoreService } from '@/helpers/core-service';
+import { useToast } from '@/contexts/toast-content';
+import ConfirmationModal from '../modal';
+
+const { width } = Dimensions.get('window');
 
 interface BankDetails {
   bank_name: string;
@@ -29,6 +36,8 @@ export default function WithdrawScreen() {
   const [loading, setLoading] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
   const [isFetchingBalance, setIsFetchingBalance] = useState(false);
+  const [amountFocused, setAmountFocused] = useState(false);
+  
   
   // Bank details state
   const [bankDetails, setBankDetails] = useState<BankDetails>({
@@ -37,6 +46,17 @@ export default function WithdrawScreen() {
     account_number: '',
     account_name: '',
   });
+  const {showToast} = useToast();
+      const [open, setOpen] = useState(false);
+        const [modalMessages, setModalMessages] = useState({
+          title: '',
+          message: '',
+          variant: 'primary' as 'primary' | 'danger' | 'success',
+          onclick: () => {},
+          onCancel: () => {
+            setOpen(false);
+          },
+        });
 
   // Predefined withdrawal amounts
   const quickAmounts: number[] = [1000, 2000, 5000, 10000, 20000, 50000];
@@ -44,33 +64,58 @@ export default function WithdrawScreen() {
   const MIN_WITHDRAWAL = 100;
   const MAX_WITHDRAWAL = 5000000;
 
-  // Fetch wallet balance on mount
-  React.useEffect(() => {
+  // Animation values
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const buttonScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
     fetchWalletBalance();
+    // Entrance animation
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, []);
+
+  const handleButtonPressIn = () => {
+    Animated.spring(buttonScale, {
+      toValue: 0.97,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handleButtonPressOut = () => {
+    Animated.spring(buttonScale, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  };
 
   const fetchWalletBalance = async () => {
     try {
       setIsFetchingBalance(true);
-      console.log('Fetching wallet balance...');
       
       const response = await fetch(`${BASE_URL}/api/wallet/balance`, {
         credentials: 'include',
       });
       
-      console.log('Balance response status:', response.status);
-      
       if (response.ok) {
         const data = await response.json();
-        console.log('Balance data received:', data);
         
         if (data.balance !== undefined) {
           setWalletBalance(parseFloat(data.balance));
         } else if (data.wallet_balance !== undefined) {
           setWalletBalance(parseFloat(data.wallet_balance));
         } else {
-          console.log('No balance field found in response:', data);
-          // Try to get balance from other possible fields
           const possibleFields = ['available_balance', 'current_balance', 'total_balance'];
           for (const field of possibleFields) {
             if (data[field] !== undefined) {
@@ -79,9 +124,6 @@ export default function WithdrawScreen() {
             }
           }
         }
-      } else {
-        const errorText = await response.text();
-        console.log('Balance fetch error:', errorText);
       }
     } catch (error: any) {
       console.error('Error fetching balance:', error.message || error);
@@ -144,7 +186,8 @@ export default function WithdrawScreen() {
 
   const handleWithdraw = async () => {
     if (!amount) {
-      Alert.alert('Error', 'Please enter withdrawal amount');
+      showToast('Please enter withdrawal amount', 'error');
+      //Alert.alert('Error', 'Please enter withdrawal amount');
       return;
     }
 
@@ -152,42 +195,54 @@ export default function WithdrawScreen() {
     const validation = validateWithdrawal(withdrawAmount);
     
     if (!validation.valid) {
-      Alert.alert('Error', validation.message);
+      showToast(validation.message || 'Invalid withdrawal details', 'error');
+      //Alert.alert('Error', validation.message);
       return;
     }
 
-    // Calculate new balance for display
     const newBalance = walletBalance - withdrawAmount;
-
-    // Confirm withdrawal with all details
-    Alert.alert(
-      'Confirm Withdrawal Request',
-      `Withdrawal Amount: ₦${withdrawAmount.toLocaleString()}\n\n` +
+    setModalMessages({
+      title: 'Confirm Withdrawal',
+      message: 'Confirm Withdrawal' + 
+      `Amount: ₦${withdrawAmount.toLocaleString()}\n\n` +
       `Bank: ${bankDetails.bank_name}\n` +
       `Account: ${bankDetails.account_number}\n` +
       `Name: ${bankDetails.account_name}\n\n` +
-      `Current Balance: ₦${walletBalance.toLocaleString()}\n` +
-      `New Balance: ₦${newBalance.toLocaleString()}\n\n` +
-      `This request will be sent to admin for approval.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Submit Request', 
-          style: 'default',
-          onPress: async () => {
-            await submitWithdrawalRequest(withdrawAmount);
-          }
-        }
-      ]
-    );
+      `New Balance: ₦${newBalance.toLocaleString()}`,
+      variant: 'primary',
+      onclick: async () => {
+        await submitWithdrawalRequest(withdrawAmount);
+      },
+      onCancel: () => {
+        setOpen(false);
+      },
+    });
+    setOpen(true);
+
+    // Alert.alert(
+    //   'Confirm Withdrawal',
+    //   `Amount: ₦${withdrawAmount.toLocaleString()}\n\n` +
+    //   `Bank: ${bankDetails.bank_name}\n` +
+    //   `Account: ${bankDetails.account_number}\n` +
+    //   `Name: ${bankDetails.account_name}\n\n` +
+    //   `New Balance: ₦${newBalance.toLocaleString()}`,
+    //   [
+    //     { text: 'Cancel', style: 'cancel' },
+    //     { 
+    //       text: 'Submit Request', 
+    //       style: 'default',
+    //       onPress: async () => {
+    //         await submitWithdrawalRequest(withdrawAmount);
+    //       }
+    //     }
+    //   ]
+   // );
   };
 
   const submitWithdrawalRequest = async (withdrawAmount: number) => {
     setLoading(true);
 
     try {
-      console.log('Submitting withdrawal request for:', withdrawAmount);
-      
       const response = await fetch(`${BASE_URL}/api/wallet/withdraw`, {
         method: 'POST',
         headers: {
@@ -204,58 +259,69 @@ export default function WithdrawScreen() {
       });
 
       const responseText = await response.text();
-      console.log('Withdrawal raw response:', responseText);
       
       let data;
       try {
         data = JSON.parse(responseText);
       } catch (e) {
-        console.error('Failed to parse response as JSON:', responseText);
         throw new Error('Invalid server response');
       }
-      
-      console.log('Withdrawal parsed response:', data);
 
       if (response.ok && data.success) {
-        // Update local balance immediately
         const newBalance = walletBalance - withdrawAmount;
         setWalletBalance(newBalance);
-        
-        Alert.alert(
-          'Request Submitted!', 
-          `Your withdrawal request has been submitted for admin approval.\n\n` +
-          `Amount: ₦${withdrawAmount.toLocaleString()}\n` +
-          `To: ${bankDetails.account_name}\n` +
-          `Bank: ${bankDetails.bank_name}\n` +
-          `New Balance: ₦${newBalance.toLocaleString()}\n\n` +
-          `Admin will process your request within 24 hours.`,
-          [
-            { 
-              text: 'OK', 
-              onPress: () => {
-                // Reset form
-                setAmount('');
-                setBankDetails({
-                  bank_name: '',
-                  bank_code: '',
-                  account_number: '',
-                  account_name: '',
-                });
-                router.back();
-              }
-            }
-          ]
-        );
+        setModalMessages({
+          title: 'Request Submitted!',
+          message: `Your withdrawal request has been submitted for approval.\n\n` +
+                   `Amount: ₦${withdrawAmount.toLocaleString()}\n` +
+                   `To: ${bankDetails.account_name}\n` +
+                   `New Balance: ₦${newBalance.toLocaleString()}`,
+          variant: 'success',
+          onclick: () => {
+            setAmount('');
+            setBankDetails({
+              bank_name: '',
+              bank_code: '',
+              account_number: '',
+              account_name: '',
+            });
+            router.back();
+          },
+          onCancel: () => {
+            setOpen(false);
+          },
+        });
+        setOpen(true);
+        // Alert.alert(
+        //   'Request Submitted!', 
+        //   `Your withdrawal request has been submitted for approval.\n\n` +
+        //   `Amount: ₦${withdrawAmount.toLocaleString()}\n` +
+        //   `To: ${bankDetails.account_name}\n` +
+        //   `New Balance: ₦${newBalance.toLocaleString()}`,
+        //   [
+        //     { 
+        //       text: 'OK', 
+        //       onPress: () => {
+        //         setAmount('');
+        //         setBankDetails({
+        //           bank_name: '',
+        //           bank_code: '',
+        //           account_number: '',
+        //           account_name: '',
+        //         });
+        //         router.back();
+        //       }
+        //     }
+        //   ]
+        //);
+
       } else {
         const errorMsg = data.message || data.error || 'Failed to submit withdrawal request';
-        Alert.alert('Error', errorMsg);
+        showToast(errorMsg, 'error');
       }
     } catch (error: any) {
       console.error('Withdrawal error:', error);
-      Alert.alert(
-        'Error', 
-        error.message || 'Network error. Please try again.'
-      );
+      showToast(error.message || 'Network error. Please try again.', 'error');
     } finally {
       setLoading(false);
     }
@@ -278,68 +344,90 @@ export default function WithdrawScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <View style={styles.container}>
-        <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen options={{ headerShown: false }} />
 
-        {/* Header */}
+      {/* Header with Gradient */}
+      <LinearGradient
+        colors={['#185FA5', '#0F4A7A']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.headerGradient}
+      >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={26} color="#000" />
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={22} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Withdraw Funds</Text>
-          <TouchableOpacity onPress={navigateToWithdrawalHistory}>
-            <Ionicons name="time-outline" size={22} color="#007AFF" />
+          <Text style={styles.headerTitleWhite}>Withdraw Funds</Text>
+          <TouchableOpacity onPress={navigateToWithdrawalHistory} style={styles.historyButton}>
+            <Ionicons name="time-outline" size={22} color="#fff" />
           </TouchableOpacity>
         </View>
+      </LinearGradient>
 
-        <KeyboardAvoidingView 
-          style={styles.content}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      <KeyboardAvoidingView 
+        style={styles.content}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        <ScrollView 
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
         >
-          <ScrollView 
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
-          >
+          <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
             {/* Balance Display */}
             <View style={styles.balanceCard}>
-              <View style={styles.balanceHeader}>
-                <Text style={styles.balanceLabel}>Available Balance</Text>
-                {isFetchingBalance ? (
-                  <ActivityIndicator size="small" color="#007AFF" />
-                ) : (
-                  <TouchableOpacity 
-                    style={styles.refreshButton}
-                    onPress={fetchWalletBalance}
-                  >
-                    <Ionicons name="refresh" size={16} color="#007AFF" />
-                  </TouchableOpacity>
-                )}
-              </View>
-              <Text style={styles.balanceAmount}>₦{walletBalance.toLocaleString()}</Text>
+              <LinearGradient
+                colors={['#EFF6FF', '#E0F2FE']}
+                style={styles.balanceGradient}
+              >
+                <View style={styles.balanceHeader}>
+                  <View style={styles.balanceIconContainer}>
+                    <Ionicons name="wallet-outline" size={20} color="#185FA5" />
+                  </View>
+                  <Text style={styles.balanceLabel}>Available Balance</Text>
+                  {isFetchingBalance ? (
+                    <ActivityIndicator size="small" color="#185FA5" />
+                  ) : (
+                    <TouchableOpacity 
+                      style={styles.refreshButton}
+                      onPress={fetchWalletBalance}
+                    >
+                      <Ionicons name="refresh-outline" size={18} color="#185FA5" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <Text style={styles.balanceAmount}>₦{walletBalance.toLocaleString()}</Text>
+              </LinearGradient>
             </View>
 
             {/* Amount Input Section */}
             <View style={styles.section}>
-              <Text style={styles.label}>Withdrawal Amount (₦)</Text>
-              <TextInput
-                style={styles.amountInput}
-                placeholder="0"
-                keyboardType="numeric"
-                value={amount}
-                onChangeText={handleAmountChange}
-                placeholderTextColor="#999"
-                maxLength={9}
-              />
+              <Text style={styles.label}>Withdrawal Amount</Text>
+              <View style={[styles.amountWrapper, amountFocused && styles.amountWrapperFocused]}>
+                <Text style={styles.currencySymbol}>₦</Text>
+                <TextInput
+                  style={styles.amountInput}
+                  placeholder="0"
+                  keyboardType="numeric"
+                  value={amount}
+                  onChangeText={handleAmountChange}
+                  placeholderTextColor="#9CA3AF"
+                  maxLength={9}
+                  onFocus={() => setAmountFocused(true)}
+                  onBlur={() => setAmountFocused(false)}
+                />
+              </View>
               
               {/* Amount Limits */}
               <View style={styles.amountLimits}>
-                <Text style={styles.limitText}>
-                  Min: ₦{MIN_WITHDRAWAL.toLocaleString()}
-                </Text>
-                <Text style={styles.limitText}>
-                  Max: ₦{MAX_WITHDRAWAL.toLocaleString()}
-                </Text>
+                <View style={styles.limitItem}>
+                  <Ionicons name="arrow-up-outline" size={12} color="#8E8E93" />
+                  <Text style={styles.limitText}>Min: ₦{MIN_WITHDRAWAL.toLocaleString()}</Text>
+                </View>
+                <View style={styles.limitItem}>
+                  <Ionicons name="arrow-down-outline" size={12} color="#8E8E93" />
+                  <Text style={styles.limitText}>Max: ₦{MAX_WITHDRAWAL.toLocaleString()}</Text>
+                </View>
               </View>
               
               {/* Quick Amount Buttons */}
@@ -367,19 +455,19 @@ export default function WithdrawScreen() {
               {/* Summary */}
               {isAmountValid && (
                 <View style={styles.summaryContainer}>
+                  <Text style={styles.summaryTitle}>Transaction Summary</Text>
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Withdrawal Amount:</Text>
+                    <Text style={styles.summaryLabel}>Withdrawal Amount</Text>
                     <Text style={styles.summaryValue}>₦{withdrawAmount.toLocaleString()}</Text>
                   </View>
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Current Balance:</Text>
+                    <Text style={styles.summaryLabel}>Current Balance</Text>
                     <Text style={styles.summaryValue}>₦{walletBalance.toLocaleString()}</Text>
                   </View>
-                  <View style={[styles.summaryRow, styles.newBalanceRow]}>
-                    <Text style={styles.newBalanceLabel}>New Balance:</Text>
-                    <Text style={styles.newBalanceValue}>
-                      ₦{newBalance.toLocaleString()}
-                    </Text>
+                  <View style={styles.summaryDivider} />
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryTotalLabel}>New Balance</Text>
+                    <Text style={styles.summaryTotalValue}>₦{newBalance.toLocaleString()}</Text>
                   </View>
                 </View>
               )}
@@ -389,78 +477,102 @@ export default function WithdrawScreen() {
             <View style={styles.section}>
               <Text style={styles.label}>Bank Account Details</Text>
               
-              <Text style={styles.inputLabel}>Bank Name *</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="e.g., First Bank, GTBank"
-                value={bankDetails.bank_name}
-                onChangeText={(text) => setBankDetails(prev => ({ ...prev, bank_name: text }))}
-                placeholderTextColor="#999"
-              />
+              <View style={styles.inputContainer}>
+                <Ionicons name="business-outline" size={18} color="#9CA3AF" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Bank Name *"
+                  placeholderTextColor="#9CA3AF"
+                  value={bankDetails.bank_name}
+                  onChangeText={(text) => setBankDetails(prev => ({ ...prev, bank_name: text }))}
+                />
+              </View>
 
-              <Text style={styles.inputLabel}>Bank Code (Optional)</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="e.g., 011 for First Bank"
-                value={bankDetails.bank_code}
-                onChangeText={(text) => setBankDetails(prev => ({ ...prev, bank_code: text }))}
-                keyboardType="numeric"
-                placeholderTextColor="#999"
-              />
+              <View style={styles.inputContainer}>
+                <Ionicons name="card-outline" size={18} color="#9CA3AF" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Bank Code (Optional)"
+                  placeholderTextColor="#9CA3AF"
+                  value={bankDetails.bank_code}
+                  onChangeText={(text) => setBankDetails(prev => ({ ...prev, bank_code: text }))}
+                  keyboardType="numeric"
+                />
+              </View>
 
-              <Text style={styles.inputLabel}>Account Number *</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="10-digit account number"
-                value={bankDetails.account_number}
-                onChangeText={(text) => setBankDetails(prev => ({ ...prev, account_number: text }))}
-                keyboardType="numeric"
-                maxLength={10}
-                placeholderTextColor="#999"
-              />
+              <View style={styles.inputContainer}>
+                <Ionicons name="keypad-outline" size={18} color="#9CA3AF" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Account Number *"
+                  placeholderTextColor="#9CA3AF"
+                  value={bankDetails.account_number}
+                  onChangeText={(text) => setBankDetails(prev => ({ ...prev, account_number: text }))}
+                  keyboardType="numeric"
+                  maxLength={10}
+                />
+              </View>
 
-              <Text style={styles.inputLabel}>Account Name *</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="Name as it appears on bank account"
-                value={bankDetails.account_name}
-                onChangeText={(text) => setBankDetails(prev => ({ ...prev, account_name: text }))}
-                placeholderTextColor="#999"
-              />
+              <View style={styles.inputContainer}>
+                <Ionicons name="person-outline" size={18} color="#9CA3AF" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Account Name *"
+                  placeholderTextColor="#9CA3AF"
+                  value={bankDetails.account_name}
+                  onChangeText={(text) => setBankDetails(prev => ({ ...prev, account_name: text }))}
+                />
+              </View>
 
               <View style={styles.bankNote}>
-                <Ionicons name="information-circle" size={16} color="#666" />
+                <Ionicons name="information-circle-outline" size={16} color="#FF9500" />
                 <Text style={styles.bankNoteText}>
-                  Ensure bank details are correct. Admin will verify before processing.
+                  Please ensure bank details are correct. Admin will verify before processing.
                 </Text>
               </View>
             </View>
 
             {/* Withdraw Button */}
-            <TouchableOpacity
-              style={[
-                styles.withdrawButton,
-                !canWithdraw && styles.withdrawButtonDisabled
-              ]}
-              onPress={handleWithdraw}
-              disabled={!canWithdraw || loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.withdrawButtonText}>
-                  {isAmountValid ? `Submit Withdrawal Request` : 'Enter Amount'}
-                </Text>
-              )}
-            </TouchableOpacity>
+            <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
+              <TouchableOpacity
+                style={[
+                  styles.withdrawButton,
+                  !canWithdraw && styles.withdrawButtonDisabled
+                ]}
+                onPress={handleWithdraw}
+                disabled={!canWithdraw || loading}
+                onPressIn={handleButtonPressIn}
+                onPressOut={handleButtonPressOut}
+              >
+                <LinearGradient
+                  colors={!canWithdraw ? ['#D1D5DB', '#D1D5DB'] : ['#185FA5', '#0F4A7A']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.buttonGradient}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="arrow-down-outline" size={20} color="#fff" />
+                      <Text style={styles.withdrawButtonText}>
+                        {isAmountValid ? 'Submit Withdrawal Request' : 'Enter Amount'}
+                      </Text>
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </Animated.View>
 
             {/* Processing Notice */}
             <View style={styles.noticeSection}>
-              <Ionicons name="time" size={16} color="#FF9800" />
+              <View style={styles.noticeIcon}>
+                <Ionicons name="time-outline" size={18} color="#FF9500" />
+              </View>
               <View style={styles.noticeContent}>
                 <Text style={styles.noticeTitle}>Processing Time</Text>
                 <Text style={styles.noticeText}>
-                  Withdrawal requests are processed manually by admin within 24 hours. 
+                  Withdrawal requests are processed manually within 24 hours. 
                   You&apos;ll be notified when your request is approved.
                 </Text>
               </View>
@@ -468,17 +580,19 @@ export default function WithdrawScreen() {
 
             {/* Security Notice */}
             <View style={styles.securitySection}>
-              <Ionicons name="shield-checkmark" size={16} color="#4CAF50" />
+              <View style={styles.securityIcon}>
+                <Ionicons name="shield-checkmark-outline" size={18} color="#34C759" />
+              </View>
               <Text style={styles.securityText}>
-                Your funds are safe with us. All withdrawals require admin verification for security.
+                Your funds are safe. All withdrawals require admin verification for security.
               </Text>
             </View>
             
-            {/* Bottom Spacing */}
             <View style={styles.bottomSpacing} />
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </View>
+          </Animated.View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+      <ConfirmationModal visible={open} onCancel={modalMessages.onCancel} onConfirm={modalMessages.onclick} message={modalMessages.message} title={modalMessages.title} />
     </SafeAreaView>
   );
 }
@@ -488,102 +602,151 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
+  headerGradient: {
+    paddingTop: Platform.OS === 'ios' ? 10 : 20,
+    paddingBottom: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    paddingTop: Platform.OS === 'ios' ? 10 : 15,
   },
-  headerTitle: {
+  backButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  historyButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  headerTitleWhite: {
     fontSize: 18,
     fontWeight: '600',
+    color: '#fff',
   },
   content: {
     flex: 1,
+    backgroundColor: '#fff',
   },
   scrollContent: {
     padding: 20,
     paddingBottom: Platform.OS === 'ios' ? 40 : 20,
   },
   balanceCard: {
-    backgroundColor: '#f8f9ff',
+    marginBottom: 24,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  balanceGradient: {
     padding: 20,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 30,
   },
   balanceHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 8,
+  },
+  balanceIconContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(24, 95, 165, 0.1)',
     justifyContent: 'center',
-    width: '100%',
-    marginBottom: 5,
-    position: 'relative',
+    alignItems: 'center',
+    marginRight: 8,
   },
   balanceLabel: {
-    fontSize: 14,
-    color: '#666',
-  },
-  balanceAmount: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#007AFF',
+    flex: 1,
+    fontSize: 13,
+    color: '#185FA5',
+    fontWeight: '500',
   },
   refreshButton: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    padding: 5,
+    padding: 4,
+  },
+  balanceAmount: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#185FA5',
   },
   section: {
-    marginBottom: 30,
+    marginBottom: 24,
   },
   label: {
     fontSize: 16,
-    fontWeight: '500',
-    color: '#333',
-    marginBottom: 15,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 12,
   },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#555',
-    marginBottom: 6,
-    marginTop: 12,
+  amountWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    borderRadius: 16,
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 16,
+  },
+  amountWrapperFocused: {
+    borderColor: '#185FA5',
+    backgroundColor: '#fff',
+    shadowColor: '#185FA5',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  currencySymbol: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#185FA5',
+    marginRight: 8,
   },
   amountInput: {
-    borderWidth: 2,
-    borderColor: '#007AFF',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 24,
-    fontWeight: '600',
-    textAlign: 'center',
-    color: '#007AFF',
-    backgroundColor: '#f8f9ff',
+    flex: 1,
+    paddingVertical: 16,
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#185FA5',
   },
   amountLimits: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 8,
+    marginTop: 10,
+  },
+  limitItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   limitText: {
     fontSize: 12,
-    color: '#666',
+    color: '#8E8E93',
   },
   quickAmountLabel: {
     fontSize: 14,
-    color: '#666',
+    color: '#8E8E93',
     marginTop: 20,
-    marginBottom: 10,
+    marginBottom: 12,
+    fontWeight: '500',
   },
   quickAmountContainer: {
     flexDirection: 'row',
@@ -593,18 +756,21 @@ const styles = StyleSheet.create({
   quickAmountButton: {
     paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: '#f1f1f1',
-    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 10,
     minWidth: 80,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   quickAmountButtonSelected: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#185FA5',
+    borderColor: '#185FA5',
   },
   quickAmountText: {
     fontSize: 14,
-    color: '#666',
+    color: '#6B7280',
     fontWeight: '500',
-    textAlign: 'center',
   },
   quickAmountTextSelected: {
     color: '#fff',
@@ -612,10 +778,16 @@ const styles = StyleSheet.create({
   summaryContainer: {
     marginTop: 20,
     padding: 16,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#e9ecef',
+    borderColor: '#E5E7EB',
+  },
+  summaryTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 12,
   },
   summaryRow: {
     flexDirection: 'row',
@@ -624,69 +796,79 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   summaryLabel: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: 13,
+    color: '#8E8E93',
   },
   summaryValue: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
-    color: '#333',
+    color: '#1F2937',
   },
-  newBalanceRow: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#dee2e6',
+  summaryDivider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 8,
   },
-  newBalanceLabel: {
-    fontSize: 15,
+  summaryTotalLabel: {
+    fontSize: 14,
     fontWeight: '600',
-    color: '#333',
+    color: '#1F2937',
   },
-  newBalanceValue: {
-    fontSize: 15,
+  summaryTotalValue: {
+    fontSize: 16,
     fontWeight: '700',
-    color: '#28a745',
+    color: '#185FA5',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 14,
+    marginBottom: 12,
+  },
+  inputIcon: {
+    marginRight: 10,
   },
   textInput: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    backgroundColor: '#f9f9f9',
+    flex: 1,
+    paddingVertical: 14,
+    fontSize: 15,
+    color: '#1F2937',
   },
   bankNote: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    marginTop: 15,
+    marginTop: 8,
     padding: 12,
-    backgroundColor: '#FFF3E0',
-    borderRadius: 8,
+    backgroundColor: '#FEFCE8',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FEF08A',
   },
   bankNoteText: {
     fontSize: 12,
-    color: '#666',
+    color: '#854D0E',
     flex: 1,
     lineHeight: 16,
   },
   withdrawButton: {
-    backgroundColor: '#007AFF',
-    padding: 18,
-    borderRadius: 12,
-    alignItems: 'center',
+    borderRadius: 14,
+    overflow: 'hidden',
     marginVertical: 20,
-    shadowColor: '#007AFF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+  },
+  buttonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 8,
   },
   withdrawButtonDisabled: {
-    backgroundColor: '#ccc',
-    shadowColor: 'transparent',
-    elevation: 0,
+    opacity: 0.6,
   },
   withdrawButtonText: {
     color: '#fff',
@@ -696,11 +878,19 @@ const styles = StyleSheet.create({
   noticeSection: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 8,
+    gap: 12,
     padding: 16,
     backgroundColor: '#FFF3E0',
-    borderRadius: 12,
+    borderRadius: 14,
     marginBottom: 12,
+  },
+  noticeIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,149,0,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   noticeContent: {
     flex: 1,
@@ -708,21 +898,29 @@ const styles = StyleSheet.create({
   noticeTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#333',
+    color: '#1F2937',
     marginBottom: 4,
   },
   noticeText: {
     fontSize: 12,
-    color: '#666',
+    color: '#6B7280',
     lineHeight: 16,
   },
   securitySection: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
     padding: 16,
     backgroundColor: '#E8F5E9',
-    borderRadius: 12,
+    borderRadius: 14,
+  },
+  securityIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(52,199,89,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   securityText: {
     fontSize: 12,

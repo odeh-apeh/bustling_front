@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   KeyboardAvoidingView,
   Platform,
   Dimensions,
@@ -45,10 +44,7 @@ export default function SignupScreen() {
   const [manualLocationInput, setManualLocationInput] = useState("");
   const {showToast} = useToast();
   
-  // Focus states for inputs
-  const [focusedField, setFocusedField] = useState<string | null>(null);
-  
-  // Animation values
+  // Animation values - only for initial mount
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
   const buttonScale = useRef(new Animated.Value(1)).current;
@@ -66,7 +62,7 @@ export default function SignupScreen() {
 
   useEffect(() => {
     getCurrentLocation();
-    // Entrance animation
+    // Entrance animation - only runs once on mount
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -79,7 +75,7 @@ export default function SignupScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+  }, []); // Empty dependency array
 
   const getCurrentLocation = async () => {
     try {
@@ -215,9 +211,9 @@ export default function SignupScreen() {
       <Stack.Screen options={{ headerShown: false, statusBarStyle: 'dark' }} />
 
       {/* Manual Location Modal */}
-      <Modal transparent visible={manualLocationVisible} animationType="slide">
+      <Modal transparent visible={manualLocationVisible} animationType="fade">
         <View style={styles.modalWrap}>
-          <Animated.View style={[styles.modalBox, { transform: [{ scale: buttonScale }] }]}>
+          <View style={styles.modalBox}>
             <View style={styles.modalHeader}>
               <View style={styles.modalIconCircle}>
                 <Ionicons name="location-outline" size={24} color="#185FA5" />
@@ -232,7 +228,6 @@ export default function SignupScreen() {
               style={styles.modalInput}
               value={manualLocationInput}
               onChangeText={setManualLocationInput}
-              autoFocus={true}
             />
 
             <View style={styles.modalActions}>
@@ -257,209 +252,186 @@ export default function SignupScreen() {
                 </LinearGradient>
               </TouchableOpacity>
             </View>
-          </Animated.View>
+          </View>
         </View>
       </Modal>
 
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.flexContainer}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         >
-          <ScrollView
-            contentContainerStyle={styles.container}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            <Animated.View 
+          <View style={styles.container}>
+            {/* Header Section */}
+            <View style={styles.headerSection}>
+              <View style={styles.logoCircle}>
+                <LinearGradient
+                  colors={['#185FA5', '#0F4A7A']}
+                  style={styles.logoGradient}
+                >
+                  <Ionicons name="person-add-outline" size={40} color="#fff" />
+                </LinearGradient>
+              </View>
+              <Text style={styles.header}>Create Account</Text>
+              <Text style={styles.subText}>Sign up to get started with Bustling</Text>
+            </View>
+
+            {/* Location Banner */}
+            <TouchableOpacity
               style={[
-                styles.contentWrapper,
-                {
-                  opacity: fadeAnim,
-                  transform: [{ translateY: slideAnim }],
-                }
+                styles.locationBanner,
+                !form.location && styles.locationBannerWarning,
               ]}
+              onPress={() => getCurrentLocation()}
+              activeOpacity={0.8}
             >
-              {/* Header */}
-              <View style={styles.headerSection}>
-                <View style={styles.logoCircle}>
-                  <LinearGradient
-                    colors={['#185FA5', '#0F4A7A']}
-                    style={styles.logoGradient}
-                  >
-                    <Ionicons name="person-add-outline" size={40} color="#fff" />
-                  </LinearGradient>
-                </View>
-                <Text style={styles.header}>Create Account</Text>
-                <Text style={styles.subText}>Sign up to get started with Bustling</Text>
+              <View style={styles.locationIconContainer}>
+                <Ionicons
+                  name={form.latitude ? "location" : "location-outline"}
+                  size={22}
+                  color={form.latitude ? "#4CAF50" : "#FF9800"}
+                />
               </View>
 
-              {/* Location Banner */}
+              <View style={styles.locationTextContainer}>
+                <Text style={styles.locationTitle}>
+                  {form.location ? "Location Detected" : "Getting Location..."}
+                </Text>
+                <Text style={styles.locationText} numberOfLines={1}>
+                  {form.location || "Please wait"}
+                </Text>
+              </View>
+
+              {gettingLocation ? (
+                <ActivityIndicator size="small" color="#185FA5" />
+              ) : (
+                <Ionicons name="refresh" size={20} color="#185FA5" />
+              )}
+            </TouchableOpacity>
+
+            {/* Form */}
+            <View style={styles.form}>
+              {/* Name Input */}
+              <View style={styles.inputWrapper}>
+                <Ionicons name="person-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Full Name *"
+                  placeholderTextColor="#9CA3AF"
+                  value={form.name}
+                  onChangeText={(v) => setForm({ ...form, name: v })}
+                />
+              </View>
+
+              {/* Phone Input */}
+              <View style={styles.inputWrapper}>
+                <Ionicons name="call-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Phone Number *"
+                  placeholderTextColor="#9CA3AF"
+                  keyboardType="phone-pad"
+                  value={form.phone}
+                  onChangeText={(v) => setForm({ ...form, phone: v })}
+                />
+              </View>
+
+              {/* Email Input */}
+              <View style={styles.inputWrapper}>
+                <Ionicons name="mail-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Email Address"
+                  placeholderTextColor="#9CA3AF"
+                  keyboardType="email-address"
+                  value={form.email}
+                  onChangeText={(v) => setForm({ ...form, email: v })}
+                />
+              </View>
+
+              {/* Type Input */}
+              <View style={styles.inputWrapper}>
+                <Ionicons name="briefcase-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Account Type (user/seller/delivery)"
+                  placeholderTextColor="#9CA3AF"
+                  value={form.type}
+                  onChangeText={(v) => setForm({ ...form, type: v })}
+                />
+              </View>
+
+              {/* Password Input */}
+              <View style={styles.inputWrapper}>
+                <Ionicons name="lock-closed-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Password *"
+                  placeholderTextColor="#9CA3AF"
+                  secureTextEntry
+                  value={form.password}
+                  onChangeText={(v) => setForm({ ...form, password: v })}
+                />
+              </View>
+
+              {/* Manual Location Button */}
               <TouchableOpacity
-                style={[
-                  styles.locationBanner,
-                  !form.location && styles.locationBannerWarning,
-                ]}
-                onPress={() => getCurrentLocation()}
-                activeOpacity={0.8}
+                style={styles.manualLocationButton}
+                onPress={() => setManualLocationVisible(true)}
               >
-                <View style={styles.locationIconContainer}>
-                  <Ionicons
-                    name={form.latitude ? "location" : "location-outline"}
-                    size={22}
-                    color={form.latitude ? "#4CAF50" : "#FF9800"}
-                  />
-                </View>
-
-                <View style={styles.locationTextContainer}>
-                  <Text style={styles.locationTitle}>
-                    {form.location ? "Location Detected" : "Getting Location..."}
-                  </Text>
-                  <Text style={styles.locationText} numberOfLines={1}>
-                    {form.location || "Please wait"}
-                  </Text>
-                </View>
-
-                {gettingLocation ? (
-                  <ActivityIndicator size="small" color="#185FA5" />
-                ) : (
-                  <Ionicons name="refresh" size={20} color="#185FA5" />
-                )}
+                <Ionicons name="create-outline" size={16} color="#185FA5" />
+                <Text style={styles.manualLocationText}>
+                  {form.location ? "Change Location" : "Enter Location Manually"}
+                </Text>
               </TouchableOpacity>
 
-              {/* Form */}
-              <View style={styles.form}>
-                {/* Name Input */}
-                <View style={[styles.inputWrapper, focusedField === 'name' && styles.inputWrapperFocused]}>
-                  <Ionicons name="person-outline" size={20} color={focusedField === 'name' ? "#185FA5" : "#9CA3AF"} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Full Name *"
-                    placeholderTextColor="#9CA3AF"
-                    value={form.name}
-                    onChangeText={(v) => setForm({ ...form, name: v })}
-                    onFocus={() => setFocusedField('name')}
-                    onBlur={() => setFocusedField(null)}
-                  />
-                </View>
-
-                {/* Phone Input */}
-                <View style={[styles.inputWrapper, focusedField === 'phone' && styles.inputWrapperFocused]}>
-                  <Ionicons name="call-outline" size={20} color={focusedField === 'phone' ? "#185FA5" : "#9CA3AF"} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Phone Number *"
-                    placeholderTextColor="#9CA3AF"
-                    keyboardType="phone-pad"
-                    value={form.phone}
-                    onChangeText={(v) => setForm({ ...form, phone: v })}
-                    onFocus={() => setFocusedField('phone')}
-                    onBlur={() => setFocusedField(null)}
-                  />
-                </View>
-
-                {/* Email Input */}
-                <View style={[styles.inputWrapper, focusedField === 'email' && styles.inputWrapperFocused]}>
-                  <Ionicons name="mail-outline" size={20} color={focusedField === 'email' ? "#185FA5" : "#9CA3AF"} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Email Address"
-                    placeholderTextColor="#9CA3AF"
-                    keyboardType="email-address"
-                    value={form.email}
-                    onChangeText={(v) => setForm({ ...form, email: v })}
-                    onFocus={() => setFocusedField('email')}
-                    onBlur={() => setFocusedField(null)}
-                  />
-                </View>
-
-                {/* Type Input */}
-                <View style={[styles.inputWrapper, focusedField === 'type' && styles.inputWrapperFocused]}>
-                  <Ionicons name="briefcase-outline" size={20} color={focusedField === 'type' ? "#185FA5" : "#9CA3AF"} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Account Type (user/seller/delivery)"
-                    placeholderTextColor="#9CA3AF"
-                    value={form.type}
-                    onChangeText={(v) => setForm({ ...form, type: v })}
-                    onFocus={() => setFocusedField('type')}
-                    onBlur={() => setFocusedField(null)}
-                  />
-                </View>
-
-                {/* Password Input */}
-                <View style={[styles.inputWrapper, focusedField === 'password' && styles.inputWrapperFocused]}>
-                  <Ionicons name="lock-closed-outline" size={20} color={focusedField === 'password' ? "#185FA5" : "#9CA3AF"} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Password *"
-                    placeholderTextColor="#9CA3AF"
-                    secureTextEntry
-                    value={form.password}
-                    onChangeText={(v) => setForm({ ...form, password: v })}
-                    onFocus={() => setFocusedField('password')}
-                    onBlur={() => setFocusedField(null)}
-                  />
-                </View>
-
-                {/* Manual Location Button */}
+              {/* Submit Button */}
+              <Animated.View style={{ transform: [{ scale: buttonScale }], width: '100%' }}>
                 <TouchableOpacity
-                  style={styles.manualLocationButton}
-                  onPress={() => setManualLocationVisible(true)}
+                  style={[
+                    styles.signupButton,
+                    isLoading && styles.disabledButton,
+                  ]}
+                  disabled={isLoading}
+                  onPress={handleSignup}
+                  onPressIn={handleButtonPressIn}
+                  onPressOut={handleButtonPressOut}
+                  activeOpacity={0.8}
                 >
-                  <Ionicons name="create-outline" size={16} color="#185FA5" />
-                  <Text style={styles.manualLocationText}>
-                    {form.location ? "Change Location" : "Enter Location Manually"}
-                  </Text>
-                </TouchableOpacity>
-
-                {/* Submit Button */}
-                <Animated.View style={{ transform: [{ scale: buttonScale }], width: '100%' }}>
-                  <TouchableOpacity
-                    style={[
-                      styles.signupButton,
-                      isLoading && styles.disabledButton,
-                    ]}
-                    disabled={isLoading}
-                    onPress={handleSignup}
-                    onPressIn={handleButtonPressIn}
-                    onPressOut={handleButtonPressOut}
-                    activeOpacity={0.8}
+                  <LinearGradient
+                    colors={isLoading ? ['#D1D5DB', '#D1D5DB'] : ['#185FA5', '#0F4A7A']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.buttonGradient}
                   >
-                    <LinearGradient
-                      colors={isLoading ? ['#D1D5DB', '#D1D5DB'] : ['#185FA5', '#0F4A7A']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={styles.buttonGradient}
-                    >
-                      {isLoading ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <>
-                          <Text style={styles.signupText}>Sign Up</Text>
-                          <Ionicons name="arrow-forward" size={18} color="#fff" />
-                        </>
-                      )}
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </Animated.View>
-
-                <View style={styles.dividerContainer}>
-                  <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>or</Text>
-                  <View style={styles.dividerLine} />
-                </View>
-
-                <TouchableOpacity
-                  onPress={() => router.push("/login/LoginScreen")}
-                  style={styles.loginLink}
-                >
-                  <Ionicons name="log-in-outline" size={16} color="#185FA5" />
-                  <Text style={styles.linkText}>Already have an account? Log In</Text>
+                    {isLoading ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <Text style={styles.signupText}>Sign Up</Text>
+                        <Ionicons name="arrow-forward" size={18} color="#fff" />
+                      </>
+                    )}
+                  </LinearGradient>
                 </TouchableOpacity>
+              </Animated.View>
+
+              <View style={styles.dividerContainer}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>or</Text>
+                <View style={styles.dividerLine} />
               </View>
-            </Animated.View>
-          </ScrollView>
+
+              <TouchableOpacity
+                onPress={() => router.push("/login/LoginScreen")}
+                style={styles.loginLink}
+              >
+                <Ionicons name="log-in-outline" size={16} color="#185FA5" />
+                <Text style={styles.linkText}>Already have an account? Log In</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </>
@@ -471,14 +443,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
+  flexContainer: {
+    flex: 1,
+  },
   container: {
-    flexGrow: 1,
+    flex: 1,
     backgroundColor: "#fff",
     paddingVertical: 40,
     paddingHorizontal: 20,
-  },
-  contentWrapper: {
-    flex: 1,
   },
   
   // Header Section
@@ -571,14 +543,6 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     paddingHorizontal: 16,
     width: '100%',
-  },
-  inputWrapperFocused: {
-    borderColor: '#185FA5',
-    backgroundColor: '#fff',
-    shadowColor: '#185FA5',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
   },
   inputIcon: {
     marginRight: 12,

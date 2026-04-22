@@ -19,6 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BASE_URL } from "@/helpers/core-service";
+import { useToast } from "@/contexts/toast-content";
 
 const { width } = Dimensions.get("window");
 
@@ -58,6 +59,7 @@ export default function UploadProductScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+  const {showToast} = useToast();
 
   // Request permissions and fetch categories
   useEffect(() => {
@@ -87,12 +89,12 @@ export default function UploadProductScreen() {
         console.log('✅ Categories loaded:', data.categories);
         setCategories(data.categories || []);
       } else {
-        Alert.alert("Error", data.message || "Failed to load categories");
+        showToast( data.message || "Failed to load categories",'error');
         setCategories([]);
       }
     } catch (error) {
       console.error('❌ Network error:', error);
-      Alert.alert("Error", "Failed to load categories");
+      showToast( "Failed to load categories");
       setCategories([]);
     } finally {
       setLoadingCategories(false);
@@ -108,12 +110,12 @@ export default function UploadProductScreen() {
 
   const pickImage = async () => {
     if (images.length >= 4) {
-      Alert.alert("Limit Reached", "You can only upload up to 4 images");
+      showToast( "You can only upload up to 4 images",'error');
       return;
     }
 
     if (hasPermission === false) {
-      Alert.alert("Permission Required", "Please enable photo library access in settings");
+      showToast( "Please enable photo library access in settings",'error');
       return;
     }
 
@@ -129,7 +131,7 @@ export default function UploadProductScreen() {
         setImages([...images, result.assets[0].uri]);
       }
     } catch (error) {
-      Alert.alert("Error", "Failed to pick image");
+      showToast( "Failed to pick image",'error');
     }
   };
 
@@ -164,7 +166,7 @@ export default function UploadProductScreen() {
     
     if (!categoryId) {
       console.error('Category has no ID:', category);
-      Alert.alert("Error", "Invalid category selected");
+      showToast( "Invalid category selected",'error');
       return;
     }
     
@@ -179,12 +181,12 @@ export default function UploadProductScreen() {
 
   const handleSubmit = async () => {
     if (!productData.title || !productData.description || !productData.price || !productData.category) {
-      Alert.alert("Error", "Please fill in all required fields");
+      showToast( "Please fill in all required fields",'error');
       return;
     }
 
     if (images.length === 0) {
-      Alert.alert("Error", "Please add at least one product image");
+      showToast( "Please add at least one product image",'error');
       return;
     }
 
@@ -194,9 +196,9 @@ export default function UploadProductScreen() {
     const missingFields = requiredFields.filter(field => !productData.attributes[field.key]);
 
     if (missingFields.length > 0) {
-      Alert.alert(
-        "Missing Information", 
-        `Please fill in: ${missingFields.map(field => field.label).join(', ')}`
+      showToast(
+        `Please fill in: ${missingFields.map(field => field.label).join(', ')}`,
+        'error'
       );
       return;
     }
@@ -240,14 +242,14 @@ export default function UploadProductScreen() {
       const data = await response.json();
       
       if (data.message) {
-        Alert.alert("Success", data.message);
+        showToast(data.message, 'success');
         router.back();
       } else {
-        Alert.alert("Error", data.message || "Failed to upload product");
+        showToast( data.message || "Failed to upload product",'error');
       }
     } catch (error) {
       console.error('Upload error:', error);
-      Alert.alert("Error", "Failed to upload product. Please try again.");
+      showToast("Failed to upload product. Please try again.", 'error');
     } finally {
       setUploading(false);
     }

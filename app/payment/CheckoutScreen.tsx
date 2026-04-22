@@ -351,7 +351,7 @@ export default function PaymentScreen() {
           ) : (
             <View style={styles.noImageContainer}>
               <Ionicons name="cube-outline" size={80} color="#ccc" />
-              <Text style={styles.noImageText}>Product Image</Text>
+              {/* <Text style={styles.noImageText}>Product Image</Text> */}
             </View>
           )}
 

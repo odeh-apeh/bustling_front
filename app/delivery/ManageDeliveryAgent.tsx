@@ -913,6 +913,7 @@ export default function ManageDeliveryAgentScreen() {
                   )}
                 </LinearGradient>
               </TouchableOpacity>
+              <View style={{ height: 100 }} />
             </ScrollView>
           </View>
         </BlurView>

@@ -428,13 +428,19 @@ export default function DeliveryAgentsScreen() {
               <Ionicons name="arrow-back" size={24} color="#fff" />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Delivery Partners</Text>
-            <TouchableOpacity
+            <View style={{flexDirection:'row', alignItems:'center', gap: 12}}>
+               <TouchableOpacity
               style={styles.registerAgentBtn}
               onPress={() => router.push("/delivery/RegisterAgentScreen")}
             >
               <Ionicons name="add-circle-outline" size={18} color="#fff" />
               <Text style={styles.registerAgentText}>Register</Text>
             </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push("/delivery/ManageDeliveryAgent")}>
+            <Ionicons name={'ellipsis-vertical'} size={22} color={'white'}></Ionicons>
+            </TouchableOpacity>
+            </View>
+           
           </View>
         </LinearGradient>
 
@@ -554,7 +560,7 @@ export default function DeliveryAgentsScreen() {
         </ScrollView>
       </View>
 
-      {/* Floating Action Button */}
+      {/* Floating Action Button
       <TouchableOpacity 
         style={styles.floatingButton} 
         onPress={() => router.push("/delivery/ManageDeliveryAgent")}
@@ -565,7 +571,7 @@ export default function DeliveryAgentsScreen() {
         >
           <Ionicons name="options" size={22} color="#fff" />
         </LinearGradient>
-      </TouchableOpacity>
+      </TouchableOpacity> */}
     </SafeAreaView>
   );
 }

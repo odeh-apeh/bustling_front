@@ -15,10 +15,13 @@ import {
   TextInput,
   Platform,
   FlatList,
+  Animated,
 } from "react-native";
 import { Ionicons, Feather, MaterialIcons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BASE_URL } from "@/helpers/core-service";
+import { useToast } from "@/contexts/toast-content";
+import ConfirmationModal from "../modal";
 
 const { width, height } = Dimensions.get("window");
 const isIOS = Platform.OS === "ios";
@@ -38,7 +41,7 @@ type Order = {
   };
   quantity: number;
   total: number;
-  status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
+  status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled" | 'completed';
   order_date: string;
   shipping_address: string;
   delivery_status: string | null;
@@ -55,12 +58,12 @@ type Order = {
 
 type EscrowStatus = "pending" | "held" | "released" | "refunded" | "disputed";
 
-// Dispute Type Interface
 interface DisputeTypeOption {
   id: string;
   title: string;
   description: string;
   icon: string;
+  color: string;
 }
 
 export default function OrderHistoryScreen() {
@@ -68,6 +71,7 @@ export default function OrderHistoryScreen() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   
   // Dispute Modal State
   const [disputeModalVisible, setDisputeModalVisible] = useState(false);
@@ -77,60 +81,98 @@ export default function OrderHistoryScreen() {
   const [disputeDescription, setDisputeDescription] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [uploadingEvidence, setUploadingEvidence] = useState(false);
+  const {showToast} = useToast();
+  const [open, setOpen] = useState(false);
+    const [modalMessages, setModalMessages] = useState({
+      title: '',
+      message: '',
+      variant: 'primary' as 'primary' | 'danger' | 'success',
+      onclick: () => {},
+      onCancel: () => {
+        setOpen(false);
+      },
+    });
   
-  // Dispute Types
+  // Dispute Types with colors
   const DISPUTE_TYPES: DisputeTypeOption[] = [
     { 
       id: "product_quality", 
       title: "Product Quality Issue", 
       description: "Item is damaged, defective, or not as described",
-      icon: "cube-outline"
+      icon: "cube-outline",
+      color: "#FF6B6B"
     },
     { 
       id: "not_delivered", 
       title: "Not Delivered", 
       description: "Item was not delivered or received",
-      icon: "close-circle-outline"
+      icon: "close-circle-outline",
+      color: "#FF9500"
     },
     { 
       id: "late_delivery", 
       title: "Late Delivery", 
       description: "Delivery took longer than expected",
-      icon: "time-outline"
+      icon: "time-outline",
+      color: "#FFCC00"
     },
     { 
       id: "damaged", 
       title: "Damaged Item", 
       description: "Item arrived damaged or broken",
-      icon: "warning-outline"
+      icon: "warning-outline",
+      color: "#FF3B30"
     },
     { 
       id: "wrong_item", 
       title: "Wrong Item", 
       description: "Received wrong item or wrong quantity",
-      icon: "swap-horizontal-outline"
+      icon: "swap-horizontal-outline",
+      color: "#5856D6"
     },
     { 
       id: "seller_not_responding", 
       title: "Seller Not Responding", 
       description: "Seller is not communicating or helping",
-      icon: "person-remove-outline"
+      icon: "person-remove-outline",
+      color: "#FF9500"
     },
     { 
       id: "payment_issue", 
       title: "Payment Issue", 
       description: "Problem with payment or charges",
-      icon: "card-outline"
+      icon: "card-outline",
+      color: "#AF52DE"
     },
     { 
       id: "other", 
       title: "Other Issue", 
       description: "Any other problem with this order",
-      icon: "ellipsis-horizontal-outline"
+      icon: "ellipsis-horizontal-outline",
+      color: "#8E8E93"
     }
   ];
 
-  // Fetch orders from backend
+  const fadeAnim = React.useRef(new Animated.Value(0)).current;
+  const slideAnim = React.useRef(new Animated.Value(20)).current;
+
+  useEffect(() => {
+    fetchOrders();
+    // Entrance animation
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
   const fetchOrders = async () => {
     try {
       setLoading(true);
@@ -171,37 +213,33 @@ export default function OrderHistoryScreen() {
           tracking_number: order.delivery_status === 'shipped' ? `TRK${order.id.toString().padStart(9, '0')}` : null
         }));
         
+        
         setOrders(transformedOrders);
       } else {
-        Alert.alert("Error", "Failed to load orders" + data.message);
+        showToast(data.message || "Failed to load orders", "error");
+        //Alert.alert("Error", "Failed to load orders" + data.message);
       }
     } catch (error) {
       console.error('Error fetching orders:', error);
-      Alert.alert("Error", "Failed to load orders. Please try again.");
+      showToast("Failed to load orders. Please try again.", "error");
+      //Alert.alert("Error", "Failed to load orders. Please try again.");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  useEffect(() => {
-    fetchOrders();
-  }, []);
-
   const onRefresh = () => {
     setRefreshing(true);
     fetchOrders();
   };
 
-  // Open Dispute Modal
   const openDisputeModal = (order: Order) => {
     setSelectedOrder(order);
     setDisputeModalVisible(true);
-    // Auto-generate title based on order
     setDisputeTitle(`Dispute for Order #${order.id}`);
   };
 
-  // Close Dispute Modal
   const closeDisputeModal = () => {
     setDisputeModalVisible(false);
     setSelectedOrder(null);
@@ -211,41 +249,36 @@ export default function OrderHistoryScreen() {
     setSubmitting(false);
   };
 
-  // Handle Image Upload (Simulated)
   const handleUploadEvidence = async () => {
     setUploadingEvidence(true);
-    // Simulate upload process
     await new Promise(resolve => setTimeout(resolve, 1000));
-    Alert.alert("Info", "Image upload would be implemented with actual camera/gallery picker");
+    showToast("Image upload would be implemented with actual camera/gallery picker", "info");
+    //Alert.alert("Info", "Image upload would be implemented with actual camera/gallery picker");
     setUploadingEvidence(false);
   };
 
-  // Submit Dispute
   const submitDispute = async () => {
     if (!selectedOrder) return;
     
-    // Validation
     if (!disputeType) {
-      Alert.alert("Required", "Please select a dispute type");
+      showToast("Please select a dispute type", "error");
       return;
     }
     
     if (!disputeTitle.trim()) {
-      Alert.alert("Required", "Please enter a title for your dispute");
+      showToast("Please enter a title for your dispute", "error");
       return;
     }
     
     if (!disputeDescription.trim() || disputeDescription.trim().length < 20) {
-      Alert.alert("Required", "Please provide a detailed description (at least 20 characters)");
+      showToast("Please provide a detailed description (at least 20 characters)", "error");
       return;
     }
 
     setSubmitting(true);
 
     try {
-      // Find escrow ID for this order (you might need to fetch this from API)
-      // For now, we'll use the order ID as escrow ID
-      const escrowId = selectedOrder.id; // This should come from your API
+      const escrowId = selectedOrder.id;
 
       const response = await fetch(`${BASE_URL}/api/wallet/raise-dispute`, {
         method: 'POST',
@@ -259,14 +292,13 @@ export default function OrderHistoryScreen() {
           disputeType: disputeType,
           title: disputeTitle.trim(),
           description: disputeDescription.trim(),
-          evidenceUrls: [] // Add evidence URLs here when implemented
+          evidenceUrls: []
         }),
       });
 
       const data = await response.json();
       
       if (response.ok) {
-        // Update local state
         setOrders(prev => prev.map(order => 
           order.id === selectedOrder.id 
             ? { 
@@ -278,37 +310,47 @@ export default function OrderHistoryScreen() {
               }
             : order
         ));
+        setModalMessages({
+          title: "Dispute Submitted",
+          message: "Your dispute has been submitted successfully. Our admin team will review your case and contact you shortly.",
+          variant: "success",
+          onclick: () => {
+            closeDisputeModal();
+            fetchOrders();
+          },
+          onCancel: () => {
+            closeDisputeModal();
+            fetchOrders();
+            setOpen(false);
+          }
+        });
+        setOpen(true);
+        // Alert.alert(
+        //   "Dispute Submitted",
+        //   "Your dispute has been submitted successfully. Our admin team will review your case and contact you shortly.",
+        //   [{ text: "OK", onPress: closeDisputeModal }]
+        // );
         
-        Alert.alert(
-          "Dispute Submitted",
-          "Your dispute has been submitted successfully. Our admin team will review your case and contact you shortly.",
-          [{ text: "OK", onPress: closeDisputeModal }]
-        );
-        
-        fetchOrders(); // Refresh data
+        fetchOrders();
       } else {
-        Alert.alert("Error", data.message || "Failed to submit dispute");
+        showToast(data.message || "Failed to submit dispute", "error");
       }
     } catch (error) {
       console.error('Error submitting dispute:', error);
-      Alert.alert("Error", "Failed to submit dispute. Please check your connection and try again.");
+      showToast("Failed to submit dispute. Please check your connection and try again.", "error");
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Order Actions
   const handleCompleteOrder = async (orderId: string) => {
-    Alert.alert(
-      "Confirm Order Completion",
-      "Have you received the item/service in good condition? This will release payment from escrow to the seller.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Yes, Complete", 
-          style: "default",
-          onPress: async () => {
-            try {
+
+    setModalMessages({
+      title: "Confirm Order Completion",
+      message: "Have you received the item/service in good condition? This will release payment from escrow to the seller upon admin verification.",
+      variant: "primary",
+      onclick: async () => {
+        try {
               const releaseResponse = await fetch(`${BASE_URL}/api/wallet/confirm-received`, {
                 method: 'POST',
                 headers: {
@@ -353,31 +395,43 @@ export default function OrderHistoryScreen() {
                     : order
                 ));
                 
-                Alert.alert("Success", "Order completed! Payment has been released from escrow.");
+                showToast("Order completed! Payment has been released from escrow.", "success");
                 fetchOrders();
+                setOpen(false);
               } else {
-                Alert.alert("Error", releaseData.message || "Failed to complete order");
+                showToast(releaseData.message || "Failed to complete order", "error");
               }
             } catch (error) {
               console.error('Error completing order:', error);
-              Alert.alert("Error", "Failed to complete order. Please try again.");
+              showToast("Failed to complete order. Please try again.", "error");
             }
-          }
-        },
-      ]
-    );
+          },
+      onCancel: () => setOpen(false)
+    });
+    setOpen(true);
+
+    // Alert.alert(
+    //   "Confirm Order Completion",
+    //   "Have you received the item/service in good condition? This will release payment from escrow to the seller.",
+    //   [
+    //     { text: "Cancel", style: "cancel" },
+    //     { 
+    //       text: "Yes, Complete", 
+    //       style: "default",
+    //       onPress: async () => {
+            
+    //     },
+    //   ]
+    // );
   };
 
   const handleConfirmDeliveryOnly = async (orderId: string) => {
-    Alert.alert(
-      "Confirm Delivery Completion",
-      "Have you received the delivery? This will release the delivery fee to the delivery agent.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Yes, Confirm", 
-          style: "default",
-          onPress: async () => {
+    // showToast("Confirming delivery...", "info");
+    setModalMessages({
+      title: "Confirm Delivery Completion",
+      message: "Have you received the delivery? This will release the delivery fee to the delivery agent.",
+      variant: "primary",
+      onclick: async () => {
             try {
               const response = await fetch(`${BASE_URL}/api/delivery/confirm`, {
                 method: 'POST',
@@ -402,23 +456,37 @@ export default function OrderHistoryScreen() {
                       }
                     : order
                 ));
+                showToast("Delivery confirmed! Payment released to delivery agent.", "success");
                 
-                Alert.alert("Success", "Delivery confirmed! Payment released to delivery agent.");
+                //Alert.alert("Success", "Delivery confirmed! Payment released to delivery agent.");
                 fetchOrders();
+                setOpen(false);
               } else {
-                Alert.alert("Error", data.message || "Failed to confirm delivery");
+                showToast(data.message || "Failed to confirm delivery", "error");
               }
             } catch (error) {
               console.error('Error confirming delivery:', error);
-              Alert.alert("Error", "Failed to confirm delivery. Please try again.");
+              showToast("Failed to confirm delivery. Please try again.", "error");
             }
-          }
-        },
-      ]
-    );
+          },
+      onCancel: () => setOpen(false)
+    });
+    setOpen(true);
+            
+    // Alert.alert(
+    //   "Confirm Delivery Completion",
+    //   "Have you received the delivery? This will release the delivery fee to the delivery agent.",
+    //   [
+    //     { text: "Cancel", style: "cancel" },
+    //     { 
+    //       text: "Yes, Confirm", 
+    //       style: "default",
+    //       onPress: async () => 
+    //     },
+    //   ]
+   // );
   };
 
-  // Helper Functions
   const getStatusColor = (status: string) => {
     switch (status) {
       case "delivered": return "#34C759";
@@ -457,40 +525,48 @@ export default function OrderHistoryScreen() {
     return `₦${amount.toLocaleString()}`;
   };
 
-  // Render Loading
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "delivered": return "checkmark-done-circle";
+      case "shipped": return "car-sport";
+      case "confirmed": return "checkmark-circle";
+      case "pending": return "time";
+      case "cancelled": return "close-circle";
+      default: return "ellipse";
+    }
+  };
+
   if (loading && !refreshing) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#007AFF" />
-          <Text style={styles.loadingText}>Loading orders...</Text>
+          <View style={styles.loadingCard}>
+            <ActivityIndicator size="large" color="#007AFF" />
+            <Text style={styles.loadingText}>Loading orders...</Text>
+          </View>
         </View>
       </SafeAreaView>
     );
   }
 
-  // Dispute Type Item Component
   const DisputeTypeItem = ({ item }: { item: DisputeTypeOption }) => (
     <TouchableOpacity
       style={[
         styles.disputeTypeItem,
-        disputeType === item.id && styles.disputeTypeItemSelected
+        disputeType === item.id && { borderColor: item.color, backgroundColor: `${item.color}10` }
       ]}
       onPress={() => setDisputeType(item.id)}
     >
-      <View style={styles.disputeTypeIcon}>
+      <View style={[styles.disputeTypeIcon, disputeType === item.id && { backgroundColor: item.color }]}>
         <Ionicons 
           name={item.icon as any} 
           size={22} 
-          color={disputeType === item.id ? "#007AFF" : "#8E8E93"} 
+          color={disputeType === item.id ? "#fff" : item.color} 
         />
       </View>
       <View style={styles.disputeTypeContent}>
-        <Text style={[
-          styles.disputeTypeTitle,
-          disputeType === item.id && styles.disputeTypeTitleSelected
-        ]}>
+        <Text style={styles.disputeTypeTitle}>
           {item.title}
         </Text>
         <Text style={styles.disputeTypeDescription}>
@@ -498,137 +574,169 @@ export default function OrderHistoryScreen() {
         </Text>
       </View>
       {disputeType === item.id && (
-        <Ionicons name="checkmark-circle" size={22} color="#007AFF" />
+        <Ionicons name="checkmark-circle" size={22} color={item.color} />
       )}
     </TouchableOpacity>
   );
 
-  // Order Card Component
   const OrderCard = ({ item }: { item: Order }) => {
+    const isExpanded = expandedOrder === item.id;
+    const statusColor = getStatusColor(item.status);
+    const statusIcon = getStatusIcon(item.status);
 
-  // 🔍 DEBUG: see why buttons are not showing
-  console.log("ORDER DEBUG:", {
-    id: item.id,
-    status: item.status,
-    payment_status: item.payment_status,
-    canComplete: item.canComplete,
-    hasDelivery: item.hasDelivery,
-    delivery_status: item.delivery_status,
-  });
-
-  return (
-    <View style={styles.orderCard}>
-      {/* Product Info */}
-      <View style={styles.productSection}>
-        {item.product.image ? (
-          <Image
-            source={{ uri: item.product.image }}
-            style={styles.productImage}
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={styles.noImage}>
-            <Ionicons name="cube-outline" size={32} color="#C7C7CC" />
+    return (
+      <Animated.View style={[styles.orderCard]}>
+        {/* Header */}
+        <TouchableOpacity 
+          style={styles.cardHeader}
+          onPress={() => setExpandedOrder(isExpanded ? null : item.id)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.cardHeaderLeft}>
+            <View style={[styles.statusIndicator, { backgroundColor: statusColor }]}>
+              <Ionicons name={statusIcon as any} size={14} color="#fff" />
+            </View>
+            <View>
+              <Text style={styles.orderId}>Order #{item.id.slice(-8)}</Text>
+              <Text style={styles.orderDate}>{item.order_date}</Text>
+            </View>
           </View>
-        )}
-
-        <View style={styles.productInfo}>
-          <Text style={styles.productName} numberOfLines={2}>
-            {item.product.name}
-          </Text>
-          <Text style={styles.seller} numberOfLines={1}>
-            Seller: {item.seller.name}
-          </Text>
-          <Text style={styles.price}>{formatCurrency(item.total)}</Text>
-          <Text style={styles.orderDate}>Ordered: {item.order_date}</Text>
-        </View>
-      </View>
-
-      {/* Status */}
-      <View style={styles.statusSection}>
-        <View style={styles.statusRow}>
-          <Text style={styles.statusLabel}>Order Status</Text>
-          <View
-            style={[
-              styles.statusBadge,
-              { backgroundColor: getStatusColor(item.status) },
-            ]}
-          >
-            <Text style={styles.statusText}>
+          <View style={styles.cardHeaderRight}>
+            <Text style={[styles.statusText, { color: statusColor }]}>
               {getStatusText(item.status)}
             </Text>
+            <Ionicons 
+              name={isExpanded ? "chevron-up" : "chevron-down"} 
+              size={20} 
+              color="#8E8E93" 
+            />
+          </View>
+        </TouchableOpacity>
+
+        {/* Product Info (Always visible) */}
+        <View style={styles.productSection}>
+          {item.product.image ? (
+            <Image
+              source={{ uri: item.product.image }}
+              style={styles.productImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.noImage}>
+              <Ionicons name="cube-outline" size={32} color="#C7C7CC" />
+            </View>
+          )}
+
+          <View style={styles.productInfo}>
+            <Text style={styles.productName} numberOfLines={2}>
+              {item.product.name}
+            </Text>
+            <Text style={styles.sellerName}>
+              <Ionicons name="storefront-outline" size={12} color="#8E8E93" /> {item.seller.name}
+            </Text>
+            <View style={styles.priceRow}>
+              <Text style={styles.price}>{formatCurrency(item.total)}</Text>
+              <Text style={styles.quantity}>Qty: {item.quantity}</Text>
+            </View>
           </View>
         </View>
 
-        {item.hasDelivery && (
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>Delivery</Text>
-            <Text style={styles.deliveryStatus}>
-              {getDeliveryStatusText(item.delivery_status)}
-            </Text>
-          </View>
-        )}
-      </View>
+        {/* Expanded Details */}
+        {isExpanded && (
+          <Animated.View style={styles.expandedContent}>
+            <View style={styles.detailsSection}>
+              <View style={styles.detailRow}>
+                <Ionicons name="location-outline" size={16} color="#8E8E93" />
+                <Text style={styles.detailLabel}>Shipping Address:</Text>
+                <Text style={styles.detailValue}>{item.shipping_address}</Text>
+              </View>
+              
+              {item.hasDelivery && (
+                <>
+                  <View style={styles.detailRow}>
+                    <Ionicons name="bicycle-outline" size={16} color="#8E8E93" />
+                    <Text style={styles.detailLabel}>Delivery Status:</Text>
+                    <View style={[styles.deliveryBadge, { backgroundColor: getStatusColor(item.delivery_status || 'pending') + '20' }]}>
+                      <Text style={[styles.deliveryBadgeText, { color: getStatusColor(item.delivery_status || 'pending') }]}>
+                        {getDeliveryStatusText(item.delivery_status)}
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  {item.delivery_fee && (
+                    <View style={styles.detailRow}>
+                      <Ionicons name="cash-outline" size={16} color="#8E8E93" />
+                      <Text style={styles.detailLabel}>Delivery Fee:</Text>
+                      <Text style={styles.detailValue}>{formatCurrency(item.delivery_fee)}</Text>
+                    </View>
+                  )}
+                  
+                  {item.tracking_number && (
+                    <View style={styles.detailRow}>
+                      <Ionicons name="cube-outline" size={16} color="#8E8E93" />
+                      <Text style={styles.detailLabel}>Tracking #:</Text>
+                      <Text style={styles.trackingNumber}>{item.tracking_number}</Text>
+                    </View>
+                  )}
+                </>
+              )}
 
-      {/* Action Buttons */}
-      <View style={styles.actionButtons}>
-
-        {/* ✅ CONFIRM BUTTON */}
-        {(item.canComplete || item.delivery_status === "assigned") && (
-          <TouchableOpacity
-            style={styles.confirmButton}
-            onPress={() => {
-              if (item.delivery_status === "assigned") {
-                handleConfirmDeliveryOnly(item.id);
-              } else {
-                handleCompleteOrder(item.id);
-              }
-            }}
-          >
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={18}
-              color="#fff"
-            />
-            <Text style={styles.confirmButtonText}>Confirm</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* ❌ Submit Dispute */}
-        {item.canDispute && (
-          <TouchableOpacity
-            style={styles.disputeButton}
-            onPress={() => openDisputeModal(item)}
-          >
-            <Ionicons name="warning" size={18} color="#fff" />
-            <Text style={styles.disputeButtonText}>Submit Dispute</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Info states */}
-        {item.payment_status === "disputed" && (
-          <View style={styles.disputeInfo}>
-            <Ionicons name="time-outline" size={16} color="#FF9500" />
-            <Text style={styles.disputeInfoText}>
-              Dispute under admin review
-            </Text>
-          </View>
+              {item.type === 'service' && (
+                <View style={styles.detailRow}>
+                  <Ionicons name="construct-outline" size={16} color="#8E8E93" />
+                  <Text style={styles.detailLabel}>Service Type:</Text>
+                  <Text style={styles.detailValue}>Digital Service</Text>
+                </View>
+              )}
+            </View>
+          </Animated.View>
         )}
 
-        {item.status === "delivered" &&
-          item.payment_status === "completed" && (
-            <View style={styles.completedInfo}>
-              <Ionicons name="checkmark-done" size={16} color="#34C759" />
-              <Text style={styles.completedInfoText}>
-                Order completed - All payments released
-              </Text>
+        {/* Action Buttons */}
+        <View style={styles.actionButtons}>
+          {(item.canComplete || item.delivery_status === "assigned") && (
+            <TouchableOpacity
+              style={styles.confirmButton}
+              onPress={() => {
+                if (item.delivery_status === "assigned") {
+                  handleConfirmDeliveryOnly(item.id);
+                } else {
+                  handleCompleteOrder(item.id);
+                }
+              }}
+            >
+              <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+              <Text style={styles.confirmButtonText}>Confirm Completion</Text>
+            </TouchableOpacity>
+          )}
+
+          {item.canDispute && item.payment_status !== "paid" && (
+            <TouchableOpacity
+              style={styles.disputeButton}
+              onPress={() => openDisputeModal(item)}
+            >
+              <Ionicons name="warning-outline" size={18} color="#fff" />
+              <Text style={styles.disputeButtonText}>Raise Dispute</Text>
+            </TouchableOpacity>
+          )}
+
+          {item.payment_status === "disputed" && (
+            <View style={styles.disputeInfo}>
+              <Ionicons name="time-outline" size={16} color="#FF9500" />
+              <Text style={styles.disputeInfoText}>Dispute under admin review</Text>
             </View>
           )}
-      </View>
-    </View>
-  );
-};
 
+          {(item.status === "completed" && item.payment_status === "paid") && (
+            <View style={styles.completedInfo}>
+              <Ionicons name="checkmark-done-circle" size={16} color="#34C759" />
+              <Text style={styles.completedInfoText}>Order completed - Payment released</Text>
+            </View>
+          )}
+        </View>
+      </Animated.View>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -643,17 +751,35 @@ export default function OrderHistoryScreen() {
         >
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Order Tracking</Text>
-        <View style={styles.placeholder} />
+        <Text style={styles.headerTitle}>My Orders</Text>
+        <TouchableOpacity onPress={onRefresh} style={styles.refreshButton}>
+          <Ionicons name="refresh-outline" size={22} color="#000" />
+        </TouchableOpacity>
       </View>
 
-      {/* Info Banner */}
-      <View style={styles.infoBanner}>
-        <Ionicons name="information-circle" size={18} color="#007AFF" />
-        <Text style={styles.infoText}>
-          Track your orders and confirm completion to release payments.
-        </Text>
-      </View>
+      {/* Stats Summary */}
+      {orders.length > 0 && (
+        <View style={styles.statsContainer}>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{orders.length}</Text>
+            <Text style={styles.statLabel}>Total Orders</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={[styles.statValue, { color: "#FF9500" }]}>
+              {orders.filter(o => o.status === 'pending').length}
+            </Text>
+            <Text style={styles.statLabel}>Processing</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={[styles.statValue, { color: "#34C759" }]}>
+              {orders.filter(o => o.status === 'delivered').length}
+            </Text>
+            <Text style={styles.statLabel}>Delivered</Text>
+          </View>
+        </View>
+      )}
 
       {/* Orders List */}
       <FlatList
@@ -672,15 +798,23 @@ export default function OrderHistoryScreen() {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Ionicons name="document-text-outline" size={80} color="#C7C7CC" />
-            <Text style={styles.emptyText}>No orders yet</Text>
+            <View style={styles.emptyIconContainer}>
+              <Ionicons name="document-text-outline" size={60} color="#C7C7CC" />
+            </View>
+            <Text style={styles.emptyTitle}>No orders yet</Text>
             <Text style={styles.emptySubtext}>Your orders will appear here</Text>
+            <TouchableOpacity 
+              style={styles.shopNowButton}
+              onPress={() => router.push('/home/Homescreen')}
+            >
+              <Text style={styles.shopNowText}>Start Shopping</Text>
+            </TouchableOpacity>
           </View>
         }
         ListFooterComponent={<View style={{ height: 30 }} />}
       />
 
-      {/* Dispute Submission Modal */}
+      {/* Dispute Modal */}
       <Modal
         animationType="slide"
         visible={disputeModalVisible}
@@ -688,16 +822,14 @@ export default function OrderHistoryScreen() {
         presentationStyle={isIOS ? "pageSheet" : "fullScreen"}
       >
         <SafeAreaView style={styles.modalSafeArea}>
-          {/* Modal Header */}
           <View style={styles.modalHeader}>
             <TouchableOpacity 
               onPress={closeDisputeModal}
               style={styles.modalCloseButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Ionicons name="close" size={24} color="#000" />
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>Submit Dispute</Text>
+            <Text style={styles.modalTitle}>Raise a Dispute</Text>
             <View style={styles.placeholder} />
           </View>
 
@@ -706,103 +838,71 @@ export default function OrderHistoryScreen() {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.modalContent}
           >
-            {/* Order Info */}
             {selectedOrder && (
               <View style={styles.orderSummary}>
-                <Text style={styles.orderSummaryTitle}>Order #{selectedOrder.id}</Text>
+                <Text style={styles.orderSummaryTitle}>Order #{selectedOrder.id.slice(-8)}</Text>
                 <Text style={styles.orderSummaryProduct} numberOfLines={2}>
                   {selectedOrder.product.name}
                 </Text>
-                <Text style={styles.orderSummaryAmount}>
-                  Amount: {formatCurrency(selectedOrder.total)}
-                </Text>
+                <View style={styles.orderSummaryFooter}>
+                  <Text style={styles.orderSummaryAmount}>
+                    {formatCurrency(selectedOrder.total)}
+                  </Text>
+                  <View style={[styles.orderSummaryBadge, { backgroundColor: getStatusColor(selectedOrder.status) + '20' }]}>
+                    <Text style={[styles.orderSummaryBadgeText, { color: getStatusColor(selectedOrder.status) }]}>
+                      {getStatusText(selectedOrder.status)}
+                    </Text>
+                  </View>
+                </View>
               </View>
             )}
 
-            {/* Step Indicator */}
-            <View style={styles.stepIndicator}>
-              <View style={[styles.step, styles.stepActive]}>
-                <Text style={styles.stepText}>1</Text>
-                <Text style={styles.stepLabel}>Select Type</Text>
-              </View>
-              <View style={styles.stepLine} />
-              <View style={[styles.step, disputeType ? styles.stepActive : styles.stepInactive]}>
-                <Text style={styles.stepText}>2</Text>
-                <Text style={styles.stepLabel}>Add Details</Text>
-              </View>
-              <View style={styles.stepLine} />
-              <View style={[styles.step, styles.stepInactive]}>
-                <Text style={styles.stepText}>3</Text>
-                <Text style={styles.stepLabel}>Submit</Text>
-              </View>
-            </View>
+            <Text style={styles.sectionTitle}>What&apos;s the issue?</Text>
+            <Text style={styles.sectionSubtitle}>Select the category that best describes your problem</Text>
+            
+            <FlatList
+              data={DISPUTE_TYPES}
+              renderItem={({ item }) => <DisputeTypeItem item={item} />}
+              keyExtractor={(item) => item.id}
+              scrollEnabled={false}
+              style={styles.disputeTypesList}
+            />
 
-            {/* Step 1: Dispute Type Selection */}
-            <View style={styles.stepSection}>
-              <Text style={styles.stepTitle}>Select Dispute Type</Text>
-              <Text style={styles.stepDescription}>
-                Choose the category that best describes your issue
-              </Text>
-              
-              <FlatList
-                data={DISPUTE_TYPES}
-                renderItem={({ item }) => <DisputeTypeItem item={item} />}
-                keyExtractor={(item) => item.id}
-                scrollEnabled={false}
-                style={styles.disputeTypesList}
-              />
-            </View>
-
-            {/* Step 2: Dispute Details (Only show if type selected) */}
             {disputeType && (
-              <View style={styles.stepSection}>
-                <Text style={styles.stepTitle}>Dispute Details</Text>
-                <Text style={styles.stepDescription}>
-                  Provide detailed information about your issue
-                </Text>
-
-                {/* Title Input */}
+              <View style={styles.detailsSection}>
+                <Text style={styles.sectionTitle}>Tell us more</Text>
+                
                 <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>Dispute Title *</Text>
+                  <Text style={styles.inputLabel}>Dispute Title</Text>
                   <TextInput
                     style={styles.textInput}
                     placeholder="Enter a clear title for your dispute"
                     value={disputeTitle}
                     onChangeText={setDisputeTitle}
-                    placeholderTextColor="#8E8E93"
+                    placeholderTextColor="#C7C7CC"
                     maxLength={100}
                   />
-                  <Text style={styles.charCount}>
-                    {disputeTitle.length}/100 characters
-                  </Text>
+                  <Text style={styles.charCount}>{disputeTitle.length}/100</Text>
                 </View>
 
-                {/* Description Input */}
                 <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>Detailed Description *</Text>
+                  <Text style={styles.inputLabel}>Detailed Description</Text>
                   <TextInput
                     style={[styles.textInput, styles.textArea]}
-                    placeholder="Describe the issue in detail. Include any relevant information about what went wrong..."
+                    placeholder="Describe the issue in detail. Include what happened, when it happened, and any communication with the seller..."
                     value={disputeDescription}
                     onChangeText={setDisputeDescription}
-                    placeholderTextColor="#8E8E93"
+                    placeholderTextColor="#C7C7CC"
                     multiline
                     numberOfLines={6}
                     textAlignVertical="top"
                     maxLength={1000}
                   />
-                  <Text style={styles.charCount}>
-                    {disputeDescription.length}/1000 characters
-                  </Text>
+                  <Text style={styles.charCount}>{disputeDescription.length}/1000</Text>
                 </View>
 
-                {/* Evidence Upload (Optional) */}
                 <View style={styles.inputContainer}>
                   <Text style={styles.inputLabel}>Evidence (Optional)</Text>
-                  <Text style={styles.inputSubLabel}>
-                    Upload photos, screenshots, or documents to support your claim
-                  </Text>
-                  
                   <TouchableOpacity 
                     style={styles.uploadButton}
                     onPress={handleUploadEvidence}
@@ -817,65 +917,20 @@ export default function OrderHistoryScreen() {
                       </>
                     )}
                   </TouchableOpacity>
-                  
                   <Text style={styles.uploadHint}>
-                    Maximum 5 images, 5MB each. Supported: JPG, PNG, PDF
+                    Upload screenshots, photos, or documents (Max 5 files, 5MB each)
                   </Text>
                 </View>
 
-                {/* Resolution Preference */}
-                <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>Desired Resolution</Text>
-                  <Text style={styles.inputSubLabel}>
-                    What would you like to happen? (Admin will make final decision)
+                <View style={styles.infoBox}>
+                  <Ionicons name="information-circle" size={20} color="#007AFF" />
+                  <Text style={styles.infoBoxText}>
+                    Our team will review your dispute within 2-3 business days. You&apos;ll be notified of any updates.
                   </Text>
-                  
-                  <View style={styles.resolutionOptions}>
-                    <TouchableOpacity style={styles.resolutionOption}>
-                      <Ionicons name="arrow-undo-circle-outline" size={20} color="#007AFF" />
-                      <Text style={styles.resolutionOptionText}>Full Refund</Text>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity style={styles.resolutionOption}>
-                      <Ionicons name="refresh-circle-outline" size={20} color="#FF9500" />
-                      <Text style={styles.resolutionOptionText}>Replacement</Text>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity style={styles.resolutionOption}>
-                      <Ionicons name="pricetag-outline" size={20} color="#34C759" />
-                      <Text style={styles.resolutionOptionText}>Partial Refund</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Terms Agreement */}
-                <View style={styles.termsContainer}>
-                  <Text style={styles.termsText}>
-                    By submitting this dispute, you agree that:
-                  </Text>
-                  <View style={styles.termItem}>
-                    <Ionicons name="checkmark-circle" size={16} color="#34C759" />
-                    <Text style={styles.termText}>
-                      You have attempted to resolve this issue with the seller
-                    </Text>
-                  </View>
-                  <View style={styles.termItem}>
-                    <Ionicons name="checkmark-circle" size={16} color="#34C759" />
-                    <Text style={styles.termText}>
-                      All information provided is accurate and truthful
-                    </Text>
-                  </View>
-                  <View style={styles.termItem}>
-                    <Ionicons name="checkmark-circle" size={16} color="#34C759" />
-                    <Text style={styles.termText}>
-                      Admin decision is final and binding
-                    </Text>
-                  </View>
                 </View>
               </View>
             )}
 
-            {/* Action Buttons */}
             <View style={styles.modalActions}>
               <TouchableOpacity 
                 style={[styles.actionButton, styles.cancelButton]}
@@ -901,11 +956,10 @@ export default function OrderHistoryScreen() {
                 )}
               </TouchableOpacity>
             </View>
-
-            <View style={{ height: 40 }} />
           </ScrollView>
         </SafeAreaView>
       </Modal>
+      <ConfirmationModal visible={open} onCancel={modalMessages.onCancel} onConfirm={modalMessages.onclick} message={modalMessages.message} title={modalMessages.title} />
     </SafeAreaView>
   );
 }
@@ -921,11 +975,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#F2F2F7',
   },
+  loadingCard: {
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 30,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
   loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: '#8E8E93',
-    fontWeight: '500',
+    marginTop: 15,
+    fontSize: 14,
+    color: '#666',
   },
   header: {
     flexDirection: "row",
@@ -937,48 +1001,49 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderBottomWidth: 1,
     borderBottomColor: "#E5E5EA",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
   },
   backButton: {
     padding: 4,
   },
+  refreshButton: {
+    padding: 4,
+  },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "600",
     color: "#000",
   },
   placeholder: {
     width: 32,
   },
-  infoBanner: {
+  statsContainer: {
     flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#E3F2FD",
-    padding: 16,
+    backgroundColor: "#fff",
     marginHorizontal: 20,
     marginTop: 15,
     marginBottom: 10,
-    borderRadius: 12,
-    gap: 12,
+    paddingVertical: 15,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#BBDEFB",
+    borderColor: "#E5E5EA",
   },
-  infoText: {
+  statItem: {
     flex: 1,
-    color: "#1565C0",
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '500',
+    alignItems: "center",
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#007AFF",
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: "#8E8E93",
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: "#E5E5EA",
   },
   listContent: {
     paddingHorizontal: 20,
@@ -990,49 +1055,101 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 60,
   },
-  emptyText: {
-    fontSize: 18,
+  emptyIconContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#F2F2F7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  emptyTitle: {
+    fontSize: 20,
     fontWeight: '600',
-    color: '#8E8E93',
-    marginTop: 15,
+    color: '#333',
+    marginBottom: 5,
   },
   emptySubtext: {
     fontSize: 14,
     color: '#C7C7CC',
-    marginTop: 5,
+    marginBottom: 20,
+  },
+  shopNowButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 25,
+  },
+  shopNowText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   orderCard: {
     backgroundColor: "#fff",
     borderRadius: 16,
-    padding: 20,
     marginBottom: 12,
-    ...Platform.select({
-      ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: "#E5E5EA",
+  },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#F8F9FA",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E5EA",
+  },
+  cardHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  statusIndicator: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  orderId: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#333",
+  },
+  orderDate: {
+    fontSize: 11,
+    color: "#8E8E93",
+    marginTop: 2,
+  },
+  cardHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: "600",
   },
   productSection: {
     flexDirection: "row",
-    marginBottom: 16,
+    padding: 16,
   },
   productImage: {
     width: 80,
     height: 80,
-    borderRadius: 10,
+    borderRadius: 12,
     marginRight: 16,
     backgroundColor: '#F2F2F7',
   },
   noImage: {
     width: 80,
     height: 80,
-    borderRadius: 10,
+    borderRadius: 12,
     marginRight: 16,
     backgroundColor: '#F2F2F7',
     justifyContent: 'center',
@@ -1042,182 +1159,131 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   productName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
-    marginBottom: 4,
     color: "#1D1D1F",
-    lineHeight: 22,
-  },
-  seller: {
-    fontSize: 14,
-    color: "#8E8E93",
     marginBottom: 4,
+    lineHeight: 20,
   },
-  price: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#007AFF",
-    marginBottom: 4,
-  },
-  orderDate: {
+  sellerName: {
     fontSize: 12,
-    color: "#C7C7CC",
-    fontStyle: 'italic',
+    color: "#8E8E93",
+    marginBottom: 6,
   },
-  statusSection: {
-    borderTopWidth: 1,
-    borderTopColor: "#F2F2F7",
-    paddingTop: 16,
-    marginBottom: 16,
-  },
-  statusRow: {
+  priceRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
   },
-  statusLabel: {
-    fontSize: 14,
-    color: "#8E8E93",
-    fontWeight: '500',
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    minWidth: 90,
-    alignItems: 'center',
-  },
-  statusText: {
-    color: "#fff",
-    fontSize: 12,
+  price: {
+    fontSize: 16,
     fontWeight: "700",
-    letterSpacing: 0.5,
-  },
-  deliveryStatus: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  deliveryFee: {
-    fontSize: 14,
     color: "#007AFF",
-    fontWeight: "700",
+  },
+  quantity: {
+    fontSize: 12,
+    color: "#8E8E93",
+  },
+  expandedContent: {
+    borderTopWidth: 1,
+    borderTopColor: "#E5E5EA",
+    backgroundColor: "#F8F9FA",
+  },
+  detailsSection: {
+    padding: 16,
+    gap: 12,
+  },
+  detailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  detailLabel: {
+    fontSize: 13,
+    color: "#8E8E93",
+  },
+  detailValue: {
+    fontSize: 13,
+    color: "#333",
+    fontWeight: "500",
+    flex: 1,
+  },
+  deliveryBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  deliveryBadgeText: {
+    fontSize: 11,
+    fontWeight: "600",
   },
   trackingNumber: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#007AFF",
-    fontFamily: 'monospace',
-    fontWeight: '500',
+    fontFamily: isIOS ? 'Courier' : 'monospace',
+    fontWeight: "500",
   },
   actionButtons: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
     gap: 10,
   },
-  completeButton: {
+  confirmButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: 8,
     backgroundColor: "#34C759",
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderRadius: 12,
-    ...Platform.select({
-      ios: {
-        shadowColor: "#34C759",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
   },
-  completeButtonText: {
+  confirmButtonText: {
     color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  confirmDeliveryButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    backgroundColor: "#007AFF",
-    paddingVertical: 14,
-    borderRadius: 12,
-    ...Platform.select({
-      ios: {
-        shadowColor: "#007AFF",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  confirmDeliveryButtonText: {
-    color: "#fff",
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
   },
   disputeButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: 8,
     backgroundColor: "#FF3B30",
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderRadius: 12,
-    ...Platform.select({
-      ios: {
-        shadowColor: "#FF3B30",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
   },
   disputeButtonText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
   },
   disputeInfo: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
-    backgroundColor: "#FFECEC",
-    padding: 14,
+    gap: 8,
+    backgroundColor: "#FFF3E0",
+    paddingVertical: 12,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#FFCDD2",
   },
   disputeInfoText: {
-    color: "#D32F2F",
-    fontSize: 14,
-    fontWeight: "600",
+    color: "#FF9500",
+    fontSize: 13,
+    fontWeight: "500",
   },
   completedInfo: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: 8,
     backgroundColor: "#E8F5E9",
-    padding: 14,
+    paddingVertical: 12,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#C8E6C9",
   },
   completedInfoText: {
     color: "#2E7D32",
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 13,
+    fontWeight: "500",
   },
   // Modal Styles
   modalSafeArea: {
@@ -1234,17 +1300,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderBottomWidth: 1,
     borderBottomColor: "#E5E5EA",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
   },
   modalCloseButton: {
     padding: 4,
@@ -1265,87 +1320,57 @@ const styles = StyleSheet.create({
   orderSummary: {
     backgroundColor: "#fff",
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 16,
     marginBottom: 20,
     borderWidth: 1,
     borderColor: "#E5E5EA",
   },
   orderSummaryTitle: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "600",
     color: "#8E8E93",
     marginBottom: 4,
   },
   orderSummaryProduct: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     color: "#1D1D1F",
-    marginBottom: 8,
-    lineHeight: 22,
+    marginBottom: 10,
+    lineHeight: 20,
+  },
+  orderSummaryFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   orderSummaryAmount: {
     fontSize: 16,
     fontWeight: "700",
     color: "#007AFF",
   },
-  stepIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 30,
+  orderSummaryBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
-  step: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: "center",
-    alignItems: "center",
+  orderSummaryBadgeText: {
+    fontSize: 11,
+    fontWeight: "600",
   },
-  stepActive: {
-    backgroundColor: "#007AFF",
-  },
-  stepInactive: {
-    backgroundColor: "#E5E5EA",
-  },
-  stepText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#fff",
-  },
-  stepLabel: {
-    fontSize: 10,
-    color: "#8E8E93",
-    marginTop: 4,
-    textAlign: "center",
-  },
-  stepLine: {
-    flex: 1,
-    height: 2,
-    backgroundColor: "#E5E5EA",
-    marginHorizontal: 8,
-  },
-  stepSection: {
-    backgroundColor: "#fff",
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#E5E5EA",
-  },
-  stepTitle: {
+  sectionTitle: {
     fontSize: 18,
     fontWeight: "600",
     color: "#1D1D1F",
     marginBottom: 6,
   },
-  stepDescription: {
+  sectionSubtitle: {
     fontSize: 14,
     color: "#8E8E93",
-    marginBottom: 20,
+    marginBottom: 16,
     lineHeight: 20,
   },
   disputeTypesList: {
-    marginTop: 8,
+    marginBottom: 20,
   },
   disputeTypeItem: {
     flexDirection: "row",
@@ -1355,75 +1380,48 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#F2F2F7",
     marginBottom: 8,
-    backgroundColor: "#F8F9FF",
-  },
-  disputeTypeItemSelected: {
-    borderColor: "#007AFF",
-    backgroundColor: "#E3F2FD",
+    backgroundColor: "#fff",
   },
   disputeTypeIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#fff",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#F2F2F7",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 12,
-    borderWidth: 1,
-    borderColor: "#E5E5EA",
+    marginRight: 14,
   },
   disputeTypeContent: {
     flex: 1,
   },
-  confirmButton: {
-  flexDirection: "row",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 10,
-  backgroundColor: "#007AFF",
-  paddingVertical: 14,
-  borderRadius: 12,
-},
-confirmButtonText: {
-  color: "#fff",
-  fontSize: 16,
-  fontWeight: "600",
-},
-
   disputeTypeTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     color: "#1D1D1F",
     marginBottom: 4,
   },
-  disputeTypeTitleSelected: {
-    color: "#007AFF",
-  },
   disputeTypeDescription: {
-    fontSize: 13,
+    fontSize: 12,
     color: "#8E8E93",
-    lineHeight: 18,
+    lineHeight: 16,
   },
+  // detailsSection: {
+  //   marginTop: 10,
+  // },
   inputContainer: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   inputLabel: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
     color: "#1D1D1F",
     marginBottom: 8,
   },
-  inputSubLabel: {
-    fontSize: 14,
-    color: "#8E8E93",
-    marginBottom: 12,
-    lineHeight: 20,
-  },
   textInput: {
     backgroundColor: "#F2F2F7",
     borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
+    padding: 14,
+    fontSize: 15,
     color: "#1D1D1F",
     borderWidth: 1,
     borderColor: "#E5E5EA",
@@ -1433,7 +1431,7 @@ confirmButtonText: {
     textAlignVertical: "top",
   },
   charCount: {
-    fontSize: 12,
+    fontSize: 11,
     color: "#C7C7CC",
     textAlign: "right",
     marginTop: 4,
@@ -1444,68 +1442,36 @@ confirmButtonText: {
     justifyContent: "center",
     gap: 10,
     backgroundColor: "#F0F7FF",
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderRadius: 12,
     borderWidth: 2,
     borderColor: "#BBDEFB",
     borderStyle: "dashed",
   },
   uploadButtonText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     color: "#007AFF",
   },
   uploadHint: {
-    fontSize: 12,
+    fontSize: 11,
     color: "#8E8E93",
     marginTop: 6,
     textAlign: "center",
   },
-  resolutionOptions: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 8,
-  },
-  resolutionOption: {
-    flex: 1,
+  infoBox: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#F2F2F7",
-    paddingVertical: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#E5E5EA",
-  },
-  resolutionOptionText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#1D1D1F",
-  },
-  termsContainer: {
-    backgroundColor: "#F8F9FF",
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E3F2FD",
-  },
-  termsText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#1D1D1F",
-    marginBottom: 12,
-  },
-  termItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 8,
     gap: 10,
+    backgroundColor: "#E3F2FD",
+    padding: 14,
+    borderRadius: 12,
+    marginTop: 10,
   },
-  termText: {
+  infoBoxText: {
     flex: 1,
     fontSize: 13,
-    color: "#666",
+    color: "#1565C0",
     lineHeight: 18,
   },
   modalActions: {
@@ -1515,7 +1481,7 @@ confirmButtonText: {
   },
   actionButton: {
     flex: 1,
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
   },
@@ -1525,29 +1491,18 @@ confirmButtonText: {
     borderColor: "#E5E5EA",
   },
   cancelButtonText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     color: "#8E8E93",
   },
   submitButton: {
     backgroundColor: "#FF3B30",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#FF3B30",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
   },
   submitButtonDisabled: {
     backgroundColor: "#FFCDD2",
   },
   submitButtonText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     color: "#fff",
   },

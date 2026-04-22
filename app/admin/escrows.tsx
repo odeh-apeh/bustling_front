@@ -10,13 +10,16 @@ import {
   Modal,
   ScrollView,
   RefreshControl,
+  TextInput,
+  Dimensions,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { router, Stack } from "expo-router";
-import { SafeAreaView} from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { BASE_URL } from "@/helpers/core-service";
+import { useToast } from "@/contexts/toast-content";
 
-
+const { width, height } = Dimensions.get('window');
 const API_BASE_URL = `${BASE_URL}/api/admin`;
 
 interface Escrow {
@@ -31,6 +34,9 @@ interface Escrow {
   seller_name: string;
   product_name?: string;
   order_id?: string;
+  transaction_ref?: string;
+  dispute_reason?: string;
+  dispute_notes?: string;
 }
 
 export default function AdminEscrowsScreen() {
@@ -50,37 +56,44 @@ export default function AdminEscrowsScreen() {
     total_amount: 0,
     pending_amount: 0,
   });
+  
+  // Release/Reject modal states
+  const [fundsModalVisible, setFundsModalVisible] = useState(false);
+  const [fundsAction, setFundsAction] = useState<'release' | 'reject' | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [releaseNotes, setReleaseNotes] = useState('');
+  const [confirmationModalVisible, setConfirmationModalVisible] = useState(false);
+  const {showToast} = useToast();
 
   // Fetch escrows
   const fetchEscrows = async () => {
-  try {
-    setLoading(true);
-    const url = new URL(`${API_BASE_URL}/escrows`);
-    if (filter !== "all") {
-      url.searchParams.append("status", filter);
-    }
+    try {
+      setLoading(true);
+      const url = new URL(`${API_BASE_URL}/escrows`);
+      if (filter !== "all") {
+        url.searchParams.append("status", filter);
+      }
 
-    const response = await fetch(url.toString(), {
-      credentials: 'include',
-    });
-    
-    const data = await response.json();
-    console.log('API Response:', data); // Debug log
-    
-    if (data.success) {
-      setEscrows(data.escrows || []);
-      setStats(data.stats || stats);
-    } else {
-      Alert.alert("Error", data.message || "Failed to load escrows");
+      const response = await fetch(url.toString(), {
+        credentials: 'include',
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setEscrows(data.escrows || []);
+        setStats(data.stats || stats);
+      } else {
+        showToast(data.message || "Failed to load escrows", 'error');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      showToast("Failed to load escrows", 'error');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-  } catch (error) {
-    console.error('Error:', error);
-    Alert.alert("Error", "Failed to load escrows");
-  } finally {
-    setLoading(false);
-    setRefreshing(false);
-  }
-};
+  };
 
   useEffect(() => {
     fetchEscrows();
@@ -91,37 +104,68 @@ export default function AdminEscrowsScreen() {
     fetchEscrows();
   };
 
-  // Handle escrow actions
-  const handleEscrowAction = async (action: "release" | "refund") => {
+  // Open funds action modal
+  const openFundsAction = (escrow: Escrow, action: 'release' | 'reject') => {
+    setSelectedEscrow(escrow);
+    setFundsAction(action);
+    setRejectionReason('');
+    setReleaseNotes('');
+    setFundsModalVisible(true);
+  };
+
+  // Confirm action
+  const confirmAction = () => {
+    if (fundsAction === 'reject' && !rejectionReason.trim()) {
+      showToast('Please provide a reason for rejection', 'error');
+      return;
+    }
+    setConfirmationModalVisible(true);
+  };
+
+  // Execute escrow action
+  const executeEscrowAction = async () => {
     if (!selectedEscrow) return;
 
     setActionLoading(true);
     try {
-      const endpoint = action === "release" ? "release-escrow" : "refund-escrow";
+      const endpoint = fundsAction === "release" ? "release-escrow" : "refund-escrow";
+      const payload: any = {
+        escrowId: selectedEscrow.id
+      };
+      
+      if (fundsAction === 'release' && releaseNotes) {
+        payload.notes = releaseNotes;
+      }
+      
+      if (fundsAction === 'reject' && rejectionReason) {
+        payload.reason = rejectionReason;
+        payload.notes = rejectionReason;
+      }
+
       const response = await fetch(`${API_BASE_URL}/${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
-        body: JSON.stringify({
-          escrowId: selectedEscrow.id
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
       
       if (response.ok) {
-        Alert.alert("Success", `Escrow ${action}ed successfully`);
+        showToast(`Escrow ${fundsAction}ed successfully`, 'success');
+        setFundsModalVisible(false);
+        setConfirmationModalVisible(false);
         setModalVisible(false);
         setSelectedEscrow(null);
         fetchEscrows();
       } else {
-        Alert.alert("Error", data.message || `Failed to ${action} escrow`);
+        showToast(data.message || `Failed to ${fundsAction} escrow`, 'error');
       }
     } catch (error) {
       console.error('Error:', error);
-      Alert.alert("Error", `Failed to ${action} escrow`);
+      showToast(`Failed to ${fundsAction} escrow`, 'error');
     } finally {
       setActionLoading(false);
     }
@@ -136,6 +180,7 @@ export default function AdminEscrowsScreen() {
     return date.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
+      year: 'numeric',
     });
   };
 
@@ -150,7 +195,7 @@ export default function AdminEscrowsScreen() {
     }
   };
 
-  // Escrow card - SIMPLE AND CLEAN
+  // Escrow card
   const EscrowCard = ({ item }: { item: Escrow }) => (
     <TouchableOpacity 
       style={styles.card}
@@ -189,12 +234,41 @@ export default function AdminEscrowsScreen() {
           <Text style={styles.label}>Date: </Text>
           <Text style={styles.value}>{formatDate(item.created_at)}</Text>
         </View>
+        
+        {item.product_name && (
+          <View style={styles.row}>
+            <Feather name="box" size={14} color="#6B7280" />
+            <Text style={styles.label}>Product: </Text>
+            <Text style={styles.value} numberOfLines={1}>{item.product_name}</Text>
+          </View>
+        )}
       </View>
+      
+      {/* Quick Action Button for Pending Escrows */}
+      {item.status === 'pending' && (
+        <View style={styles.cardActions}>
+          <TouchableOpacity 
+            style={[styles.cardActionButton, styles.rejectCardButton]}
+            onPress={() => openFundsAction(item, 'reject')}
+          >
+            <Feather name="x-circle" size={16} color="#EF4444" />
+            <Text style={styles.rejectCardText}>Reject & Refund</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.cardActionButton, styles.releaseCardButton]}
+            onPress={() => openFundsAction(item, 'release')}
+          >
+            <Feather name="check-circle" size={16} color="#10B981" />
+            <Text style={styles.releaseCardText}>Release Funds</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </TouchableOpacity>
   );
 
-  // Stats card - SIMPLE
-  const StatCard = ({ title, value, color }: { title: string; value: number; value2?: string; color: string }) => (
+  // Stats card
+  const StatCard = ({ title, value, color }: { title: string; value: number; color: string }) => (
     <View style={styles.statCard}>
       <Text style={[styles.statValue, { color }]}>{value}</Text>
       <Text style={styles.statTitle}>{title}</Text>
@@ -206,102 +280,263 @@ export default function AdminEscrowsScreen() {
       <Stack.Screen
         options={{
           header: () => (
-            <View
-              style={{
-                height: 90,
-                backgroundColor: '#3986f9',
-                flexDirection: 'row',
-                alignItems: 'flex-end',
-                paddingHorizontal: 16,
-                paddingBottom: 14,
-              }}
-            >
-              <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
+            <View style={styles.header}>
+              <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
                 <Ionicons name="arrow-back" size={24} color="#fff" />
               </TouchableOpacity>
-      
-              <Text
-                style={{
-                  color: '#fff',
-                  fontSize: 20,
-                  fontWeight: '600',
-                }}
-              >
-                Escrow Management
-              </Text>
+              <Text style={styles.headerTitle}>Escrow Management</Text>
+              <TouchableOpacity onPress={fetchEscrows} style={styles.headerRefresh}>
+                <Ionicons name="refresh-outline" size={22} color="#fff" />
+              </TouchableOpacity>
             </View>
           ),
         }}
       />
 
-      {/* Stats Overview */}
-      <View style={styles.statsContainer}>
-        <StatCard title="Total" value={stats.total} color="#3B82F6" />
-        <StatCard title="Pending" value={stats.pending} color="#F59E0B" />
-        <StatCard title="Released" value={stats.released} color="#10B981" />
-        <StatCard title="Disputed" value={stats.disputed} color="#EF4444" />
-      </View>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Stats Overview */}
+        <View style={styles.statsContainer}>
+          <StatCard title="Total" value={stats.total} color="#3B82F6" />
+          <StatCard title="Pending" value={stats.pending} color="#F59E0B" />
+          <StatCard title="Released" value={stats.released} color="#10B981" />
+          <StatCard title="Disputed" value={stats.disputed} color="#EF4444" />
+        </View>
 
-      {/* Total Amount */}
-      <View style={styles.totalAmountCard}>
-        <Text style={styles.totalAmountTitle}>Total Amount Held</Text>
-        <Text style={styles.totalAmountValue}>{formatCurrency(stats.total_amount)}</Text>
-        <Text style={styles.pendingAmount}>Pending: {formatCurrency(stats.pending_amount)}</Text>
-      </View>
+        {/* Total Amount Card */}
+        <View style={styles.totalAmountCard}>
+          <View>
+            <Text style={styles.totalAmountTitle}>Total Amount Held</Text>
+            <Text style={styles.totalAmountValue}>{formatCurrency(stats.total_amount)}</Text>
+          </View>
+          <View style={styles.pendingAmountContainer}>
+            <Text style={styles.pendingAmountLabel}>Pending Release:</Text>
+            <Text style={styles.pendingAmountValue}>{formatCurrency(stats.pending_amount)}</Text>
+          </View>
+        </View>
 
-      {/* Filter Tabs - SIMPLE */}
-      <View style={styles.tabsContainer}>
-        {["all", "pending", "released", "disputed", "refunded"].map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            style={[styles.tab, filter === tab && styles.tabActive]}
-            onPress={() => setFilter(tab)}
-          >
-            <Text style={[styles.tabText, filter === tab && styles.tabTextActive]}>
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+        {/* Filter Tabs */}
+        <View style={styles.tabsContainer}>
+          {["all", "pending", "released", "disputed", "refunded"].map((tab) => (
+            <TouchableOpacity
+              key={tab}
+              style={[styles.tab, filter === tab && styles.tabActive]}
+              onPress={() => setFilter(tab)}
+            >
+              <Text style={[styles.tabText, filter === tab && styles.tabTextActive]}>
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Content */}
+        {loading ? (
+          <View style={styles.centerContainer}>
+            <ActivityIndicator size="large" color="#3B82F6" />
+            <Text style={styles.loadingText}>Loading escrows...</Text>
+          </View>
+        ) : escrows.length === 0 ? (
+          <View style={styles.centerContainer}>
+            <Feather name="shield" size={60} color="#D1D5DB" />
+            <Text style={styles.emptyText}>No escrows found</Text>
+            <Text style={styles.emptySubText}>
+              {filter !== 'all' ? `No ${filter} escrows` : 'No escrows available'}
             </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+          </View>
+        ) : (
+          <FlatList
+            data={escrows}
+            renderItem={({ item }) => <EscrowCard item={item} />}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={["#3B82F6"]}
+              />
+            }
+            showsVerticalScrollIndicator={false}
+            scrollEnabled={false}
+          />
+        )}
+      </ScrollView>
 
-      {/* Refresh Button */}
-      <TouchableOpacity style={styles.refreshHeaderButton} onPress={fetchEscrows}>
-        <Feather name="refresh-cw" size={18} color="#3B82F6" />
-        <Text style={styles.refreshHeaderText}>Refresh</Text>
-      </TouchableOpacity>
+      {/* Funds Action Modal (Release/Reject) */}
+      <Modal
+        visible={fundsModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setFundsModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.fundsModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {fundsAction === 'release' ? 'Release Funds' : 'Reject & Refund'}
+              </Text>
+              <TouchableOpacity 
+                onPress={() => setFundsModalVisible(false)}
+                disabled={actionLoading}
+              >
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
 
-      {/* Content */}
-      {loading ? (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color="#3B82F6" />
-          <Text style={styles.loadingText}>Loading escrows...</Text>
+            {selectedEscrow && (
+              <ScrollView style={styles.fundsModalBody}>
+                {/* Amount Summary */}
+                <View style={styles.fundsAmountCard}>
+                  <Text style={styles.fundsAmountLabel}>Amount to {fundsAction === 'release' ? 'Release' : 'Refund'}</Text>
+                  <Text style={styles.fundsAmountValue}>{formatCurrency(selectedEscrow.amount)}</Text>
+                  <View style={styles.fundsParties}>
+                    <View style={styles.fundsParty}>
+                      <Feather name="user" size={14} color="#666" />
+                      <Text style={styles.fundsPartyText}>Buyer: {selectedEscrow.buyer_name}</Text>
+                    </View>
+                    <Feather name="arrow-right" size={14} color="#999" />
+                    <View style={styles.fundsParty}>
+                      <Feather name="user" size={14} color="#666" />
+                      <Text style={styles.fundsPartyText}>Seller: {selectedEscrow.seller_name}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {fundsAction === 'release' ? (
+                  // Release Form
+                  <View style={styles.formSection}>
+                    <Text style={styles.formLabel}>Release Notes (Optional)</Text>
+                    <TextInput
+                      style={styles.textArea}
+                      placeholder="Add notes about this release..."
+                      placeholderTextColor="#999"
+                      value={releaseNotes}
+                      onChangeText={setReleaseNotes}
+                      multiline
+                      numberOfLines={3}
+                      textAlignVertical="top"
+                    />
+                    
+                    <View style={styles.infoBox}>
+                      <Ionicons name="information-circle" size={20} color="#3B82F6" />
+                      <Text style={styles.infoText}>
+                        Releasing funds will transfer the amount to the seller&apos;s wallet.
+                        This action cannot be undone.
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
+                  // Rejection Form
+                  <View style={styles.formSection}>
+                    <Text style={styles.formLabel}>Rejection Reason *</Text>
+                    <TextInput
+                      style={styles.textArea}
+                      placeholder="Explain why this escrow is being rejected..."
+                      placeholderTextColor="#999"
+                      value={rejectionReason}
+                      onChangeText={setRejectionReason}
+                      multiline
+                      numberOfLines={4}
+                      textAlignVertical="top"
+                    />
+                    
+                    <View style={styles.infoBoxWarning}>
+                      <Ionicons name="alert-circle" size={20} color="#EF4444" />
+                      <Text style={styles.infoTextWarning}>
+                        Refunding will return the amount to the buyer&apos;s wallet.
+                        The seller will not receive payment for this transaction.
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                <View style={styles.fundsModalButtons}>
+                  <TouchableOpacity
+                    style={[styles.fundsModalButton, styles.cancelButton]}
+                    onPress={() => setFundsModalVisible(false)}
+                    disabled={actionLoading}
+                  >
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[
+                      styles.fundsModalButton,
+                      fundsAction === 'release' ? styles.releaseModalButton : styles.rejectModalButton
+                    ]}
+                    onPress={confirmAction}
+                    disabled={actionLoading}
+                  >
+                    {actionLoading ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.confirmButtonText}>
+                        {fundsAction === 'release' ? 'Confirm Release' : 'Confirm Refund'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            )}
+          </View>
         </View>
-      ) : escrows.length === 0 ? (
-        <View style={styles.centerContainer}>
-          <Feather name="shield" size={60} color="#D1D5DB" />
-          <Text style={styles.emptyText}>No escrows found</Text>
-          <Text style={styles.emptySubText}>
-            {filter !== 'all' ? `No ${filter} escrows` : 'No escrows available'}
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={escrows}
-          renderItem={({ item }) => <EscrowCard item={item} />}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={["#3B82F6"]}
-            />
-          }
-          showsVerticalScrollIndicator={false}
-        />
-      )}
+      </Modal>
 
-      {/* Details Modal - CLEAN AND SIMPLE */}
+      {/* Confirmation Modal */}
+      <Modal
+        visible={confirmationModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setConfirmationModalVisible(false)}
+      >
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmModal}>
+            <View style={styles.confirmIconContainer}>
+              <Ionicons 
+                name={fundsAction === 'release' ? "checkmark-circle" : "warning"} 
+                size={50} 
+                color={fundsAction === 'release' ? "#10B981" : "#EF4444"} 
+              />
+            </View>
+            <Text style={styles.confirmTitle}>
+              {fundsAction === 'release' ? 'Release Funds?' : 'Reject & Refund?'}
+            </Text>
+            <Text style={styles.confirmMessage}>
+              {fundsAction === 'release' 
+                ? `Are you sure you want to release ₦${selectedEscrow?.amount?.toLocaleString()} to ${selectedEscrow?.seller_name}?`
+                : `Are you sure you want to reject this escrow and refund ₦${selectedEscrow?.amount?.toLocaleString()} to ${selectedEscrow?.buyer_name}?`
+              }
+            </Text>
+            {fundsAction === 'reject' && rejectionReason && (
+              <View style={styles.reasonPreview}>
+                <Text style={styles.reasonPreviewLabel}>Reason:</Text>
+                <Text style={styles.reasonPreviewText}>{rejectionReason}</Text>
+              </View>
+            )}
+            <View style={styles.confirmButtons}>
+              <TouchableOpacity
+                style={[styles.confirmButton, styles.confirmCancelButton]}
+                onPress={() => setConfirmationModalVisible(false)}
+              >
+                <Text style={styles.confirmCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.confirmButton,
+                  fundsAction === 'release' ? styles.confirmReleaseButton : styles.confirmRejectButton
+                ]}
+                onPress={executeEscrowAction}
+              >
+                <Text style={styles.confirmActionText}>
+                  {fundsAction === 'release' ? 'Yes, Release' : 'Yes, Refund'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Details Modal */}
       <Modal
         visible={modalVisible}
         animationType="slide"
@@ -318,12 +553,11 @@ export default function AdminEscrowsScreen() {
                     onPress={() => setModalVisible(false)}
                     disabled={actionLoading}
                   >
-                    <Ionicons name="close" size={24} color="#000" />
+                    <Ionicons name="close" size={24} color="#333" />
                   </TouchableOpacity>
                 </View>
 
                 <ScrollView style={styles.modalBody}>
-                  {/* Amount */}
                   <View style={styles.modalAmountSection}>
                     <Text style={styles.modalAmountLabel}>Amount</Text>
                     <Text style={styles.modalAmountValue}>
@@ -336,7 +570,6 @@ export default function AdminEscrowsScreen() {
                     </View>
                   </View>
 
-                  {/* Details */}
                   <View style={styles.detailsSection}>
                     <DetailRow label="Escrow ID" value={selectedEscrow.id} />
                     <DetailRow label="Created" value={new Date(selectedEscrow.created_at).toLocaleString()} />
@@ -349,50 +582,63 @@ export default function AdminEscrowsScreen() {
                     {selectedEscrow.product_name && (
                       <DetailRow label="Product" value={selectedEscrow.product_name} />
                     )}
+                    {selectedEscrow.transaction_ref && (
+                      <DetailRow label="Transaction Ref" value={selectedEscrow.transaction_ref} />
+                    )}
                   </View>
 
-                  {/* Parties */}
                   <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Buyer</Text>
+                    <Text style={styles.sectionTitle}>Parties</Text>
                     <View style={styles.partyCard}>
                       <Text style={styles.partyName}>{selectedEscrow.buyer_name}</Text>
-                      <Text style={styles.partyId}>ID: {selectedEscrow.buyer_id}</Text>
+                      <Text style={styles.partyId}>Buyer ID: {selectedEscrow.buyer_id}</Text>
                     </View>
                     
-                    <Text style={styles.sectionTitle}>Seller</Text>
                     <View style={styles.partyCard}>
                       <Text style={styles.partyName}>{selectedEscrow.seller_name}</Text>
-                      <Text style={styles.partyId}>ID: {selectedEscrow.seller_id}</Text>
+                      <Text style={styles.partyId}>Seller ID: {selectedEscrow.seller_id}</Text>
                     </View>
                   </View>
 
-                  {/* Actions - Only show for pending */}
+                  {selectedEscrow.dispute_reason && (
+                    <View style={styles.section}>
+                      <Text style={styles.sectionTitle}>Dispute Details</Text>
+                      <View style={styles.disputeCard}>
+                        <Text style={styles.disputeReason}>{selectedEscrow.dispute_reason}</Text>
+                        {selectedEscrow.dispute_notes && (
+                          <Text style={styles.disputeNotes}>{selectedEscrow.dispute_notes}</Text>
+                        )}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Action Buttons in Details Modal */}
                   {selectedEscrow.status === "pending" && (
                     <View style={styles.actionsSection}>
-                      <Text style={styles.sectionTitle}>Actions</Text>
+                      <Text style={styles.sectionTitle}>Funds Action</Text>
                       
                       <TouchableOpacity 
-                        style={[styles.actionButton, styles.releaseButton]}
-                        onPress={() => handleEscrowAction("release")}
+                        style={[styles.detailActionButton, styles.rejectDetailButton]}
+                        onPress={() => {
+                          setModalVisible(false);
+                          openFundsAction(selectedEscrow, 'reject');
+                        }}
                         disabled={actionLoading}
                       >
-                        {actionLoading ? (
-                          <ActivityIndicator size="small" color="#fff" />
-                        ) : (
-                          <>
-                            <Feather name="arrow-up-circle" size={20} color="#fff" />
-                            <Text style={styles.actionButtonText}>Release to Seller</Text>
-                          </>
-                        )}
+                        <Feather name="x-circle" size={20} color="#EF4444" />
+                        <Text style={styles.rejectDetailText}>Reject & Refund to Buyer</Text>
                       </TouchableOpacity>
                       
                       <TouchableOpacity 
-                        style={[styles.actionButton, styles.refundButton]}
-                        onPress={() => handleEscrowAction("refund")}
+                        style={[styles.detailActionButton, styles.releaseDetailButton]}
+                        onPress={() => {
+                          setModalVisible(false);
+                          openFundsAction(selectedEscrow, 'release');
+                        }}
                         disabled={actionLoading}
                       >
-                        <Feather name="arrow-down-circle" size={20} color="#fff" />
-                        <Text style={styles.actionButtonText}>Refund to Buyer</Text>
+                        <Feather name="check-circle" size={20} color="#10B981" />
+                        <Text style={styles.releaseDetailText}>Release to Seller</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -406,7 +652,7 @@ export default function AdminEscrowsScreen() {
   );
 }
 
-// Simple Detail Row Component
+// Detail Row Component
 const DetailRow = ({ label, value }: { label: string; value: string }) => (
   <View style={styles.detailRow}>
     <Text style={styles.detailLabel}>{label}</Text>
@@ -419,7 +665,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#F9FAFB",
   },
-  // Stats
+  header: {
+    height: 100,
+    backgroundColor: '#3986f9',
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  backButton: {
+    padding: 8,
+    marginLeft: -8,
+  },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  headerRefresh: {
+    padding: 8,
+  },
   statsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
@@ -433,7 +706,7 @@ const styles = StyleSheet.create({
     minWidth: 70,
   },
   statValue: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
     marginBottom: 4,
   },
@@ -442,7 +715,6 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontWeight: '500',
   },
-  // Total Amount
   totalAmountCard: {
     backgroundColor: '#fff',
     marginHorizontal: 16,
@@ -451,33 +723,43 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E5E7EB',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   totalAmountTitle: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#6B7280',
     marginBottom: 4,
   },
   totalAmountValue: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '700',
     color: '#111827',
-    marginBottom: 4,
   },
-  pendingAmount: {
-    fontSize: 14,
+  pendingAmountContainer: {
+    alignItems: 'flex-end',
+  },
+  pendingAmountLabel: {
+    fontSize: 11,
+    color: '#6B7280',
+  },
+  pendingAmountValue: {
+    fontSize: 16,
+    fontWeight: '600',
     color: '#F59E0B',
-    fontWeight: '500',
   },
-  // Tabs
   tabsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
     marginVertical: 8,
+    flexWrap: 'wrap',
   },
   tab: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     marginRight: 8,
+    marginBottom: 8,
     borderRadius: 20,
     backgroundColor: '#fff',
     borderWidth: 1,
@@ -488,43 +770,21 @@ const styles = StyleSheet.create({
     borderColor: '#3B82F6',
   },
   tabText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
     color: '#6B7280',
   },
   tabTextActive: {
     color: '#fff',
   },
-  // Refresh Header
-  refreshHeaderButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-end',
-    marginRight: 16,
-    marginBottom: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#3B82F6',
-  },
-  refreshHeaderText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#3B82F6',
-    marginLeft: 6,
-  },
-  // Loading/Empty States
   centerContainer: {
-    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 40,
   },
   loadingText: {
     marginTop: 12,
-    fontSize: 16,
+    fontSize: 14,
     color: '#6B7280',
   },
   emptyText: {
@@ -538,12 +798,10 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     marginTop: 4,
   },
-  // List
   listContent: {
     paddingHorizontal: 16,
     paddingBottom: 100,
   },
-  // Card
   card: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -564,7 +822,7 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   idText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#6B7280',
     marginTop: 4,
   },
@@ -574,7 +832,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   statusText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     color: '#fff',
   },
@@ -591,23 +849,62 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   label: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#6B7280',
     marginLeft: 8,
   },
   value: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#374151',
     fontWeight: '500',
     marginLeft: 4,
+    flex: 1,
   },
-  // Modal
+  cardActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  cardActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  rejectCardButton: {
+    backgroundColor: '#FEF2F2',
+  },
+  releaseCardButton: {
+    backgroundColor: '#F0FDF4',
+  },
+  rejectCardText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#EF4444',
+  },
+  releaseCardText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#10B981',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
   modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '85%',
+  },
+  fundsModalContent: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
@@ -628,6 +925,9 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   modalBody: {
+    padding: 20,
+  },
+  fundsModalBody: {
     padding: 20,
   },
   modalAmountSection: {
@@ -687,7 +987,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#374151',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   partyCard: {
     backgroundColor: '#F9FAFB',
@@ -698,7 +998,7 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
   },
   partyName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: '#111827',
     marginBottom: 4,
@@ -707,26 +1007,241 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9CA3AF',
   },
+  disputeCard: {
+    backgroundColor: '#FEF2F2',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
+  },
+  disputeReason: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#EF4444',
+    marginBottom: 8,
+  },
+  disputeNotes: {
+    fontSize: 13,
+    color: '#666',
+  },
   actionsSection: {
     marginBottom: 30,
   },
-  actionButton: {
+  detailActionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderRadius: 12,
     marginBottom: 12,
   },
-  releaseButton: {
+  rejectDetailButton: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
+  },
+  releaseDetailButton: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#D1FAE5',
+  },
+  rejectDetailText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#EF4444',
+  },
+  releaseDetailText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#10B981',
+  },
+  fundsAmountCard: {
+    backgroundColor: '#F9FAFB',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  fundsAmountLabel: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  fundsAmountValue: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 12,
+  },
+  fundsParties: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  fundsParty: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  fundsPartyText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  formSection: {
+    marginBottom: 20,
+  },
+  formLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  textArea: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 14,
+    color: '#333',
+    minHeight: 100,
+    backgroundColor: '#fff',
+  },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#EFF6FF',
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 12,
+  },
+  infoBoxWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FEF2F2',
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 12,
+  },
+  infoText: {
+    fontSize: 12,
+    color: '#3B82F6',
+    flex: 1,
+    lineHeight: 16,
+  },
+  infoTextWarning: {
+    fontSize: 12,
+    color: '#EF4444',
+    flex: 1,
+    lineHeight: 16,
+  },
+  fundsModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+    marginBottom: 30,
+  },
+  fundsModalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#F3F4F6',
+  },
+  releaseModalButton: {
     backgroundColor: '#10B981',
   },
-  refundButton: {
+  rejectModalButton: {
     backgroundColor: '#EF4444',
   },
-  actionButtonText: {
-    fontSize: 16,
+  cancelButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  confirmButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmModal: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 24,
+    width: width - 40,
+    maxWidth: 340,
+    alignItems: 'center',
+  },
+  confirmIconContainer: {
+    marginBottom: 16,
+  },
+  confirmTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 8,
+  },
+  confirmMessage: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  reasonPreview: {
+    backgroundColor: '#F9FAFB',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 20,
+    width: '100%',
+  },
+  reasonPreviewLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 4,
+  },
+  reasonPreviewText: {
+    fontSize: 13,
+    color: '#333',
+  },
+  confirmButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  confirmButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  confirmCancelButton: {
+    backgroundColor: '#F3F4F6',
+  },
+  confirmReleaseButton: {
+    backgroundColor: '#10B981',
+  },
+  confirmRejectButton: {
+    backgroundColor: '#EF4444',
+  },
+  confirmCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  confirmActionText: {
+    fontSize: 14,
     fontWeight: '600',
     color: '#fff',
   },

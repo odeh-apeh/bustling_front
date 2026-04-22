@@ -8,7 +8,6 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   Image,
   Animated,
   ActivityIndicator,
@@ -31,8 +30,6 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [showPasswordScreen, setShowPasswordScreen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [phoneFocused, setPhoneFocused] = useState(false);
-  const [passwordFocused, setPasswordFocused] = useState(false);
   const {showToast} = useToast();
 
   // Animation values
@@ -42,7 +39,7 @@ export default function LoginScreen() {
 
   useEffect(() => {
     loadSavedPhone();
-    // Entrance animation
+    // Entrance animation - only run once
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -55,7 +52,7 @@ export default function LoginScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+  }, []); // Empty dependency array - only runs once
 
   const loadSavedPhone = async () => {
     try {
@@ -95,8 +92,6 @@ export default function LoginScreen() {
 
       setIsLoading(true);
 
-      console.log('📤 Sending login request with:', { phone: userPhone });
-
       const response = await fetch(`${BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
@@ -110,7 +105,6 @@ export default function LoginScreen() {
       });
 
       const data = await response.json();
-      console.log('📦 Login response:', data);
       
       if (data.success) {
         setPassword("");
@@ -121,7 +115,7 @@ export default function LoginScreen() {
       }
       
     } catch (error: any) {
-      console.error('💥 Login error:', error);
+      console.error('Login error:', error);
       showToast("Network error. Please try again.", "error");
     } finally {
       setIsLoading(false);
@@ -166,20 +160,12 @@ export default function LoginScreen() {
       <SafeAreaView style={styles.container}>
         <Stack.Screen options={{ headerShown: false, statusBarStyle: 'dark' }} />
         
-        <ScrollView 
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
+        <KeyboardAvoidingView 
+          style={styles.flexContainer}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         >
-          <Animated.View 
-            style={[
-              styles.contentWrapper,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
-              }
-            ]}
-          >
+          <View style={styles.contentWrapper}>
             {/* Logo Section */}
             <View style={styles.logoSection}>
               <View style={styles.logoCircle}>
@@ -200,9 +186,9 @@ export default function LoginScreen() {
               <Text style={styles.formSubtitle}>Enter your phone number to continue</Text>
               
               <View style={styles.form}>
-                {/* Phone Input with Icon */}
-                <View style={[styles.inputWrapper, phoneFocused && styles.inputWrapperFocused]}>
-                  <Ionicons name="call-outline" size={20} color={phoneFocused ? "#185FA5" : "#9CA3AF"} style={styles.inputIcon} />
+                {/* Phone Input */}
+                <View style={styles.inputWrapper}>
+                  <Ionicons name="call-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
                     placeholder="Phone Number"
@@ -210,9 +196,6 @@ export default function LoginScreen() {
                     keyboardType="phone-pad"
                     value={userPhone}
                     onChangeText={setUserPhone}
-                    //onFocus={() => setPhoneFocused(true)}
-                    // onBlur={() => setPhoneFocused(false)}
-                    //autoFocus={true}
                   />
                   {userPhone.length > 0 && (
                     <TouchableOpacity onPress={() => setUserPhone("")}>
@@ -270,8 +253,8 @@ export default function LoginScreen() {
             <Text style={styles.footerNote}>
               By continuing, you agree to our Terms of Service
             </Text>
-          </Animated.View>
-        </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -282,135 +265,117 @@ export default function LoginScreen() {
       <Stack.Screen options={{ headerShown: false, statusBarStyle: 'dark' }} />
       
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
+        style={styles.flexContainer}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 25}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <Animated.View 
-            style={[
-              styles.contentWrapper,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
-              }
-            ]}
-          >
-            {/* Back Button */}
-            <TouchableOpacity onPress={handleChangePhone} style={styles.backButton}>
-              <Ionicons name="arrow-back" size={22} color="#185FA5" />
-            </TouchableOpacity>
+        <View style={styles.contentWrapper}>
+          {/* Back Button */}
+          <TouchableOpacity onPress={handleChangePhone} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={22} color="#185FA5" />
+          </TouchableOpacity>
 
-            {/* Logo Section */}
-            <View style={styles.logoSectionSmall}>
-              <View style={styles.logoCircleSmall}>
-                <LinearGradient
-                  colors={['#185FA5', '#0F4A7A']}
-                  style={styles.logoGradientSmall}
-                >
-                  <Ionicons name="person" size={32} color="#fff" />
-                </LinearGradient>
-              </View>
-              <Text style={styles.appTitleSmall}>Welcome Back!</Text>
+          {/* Logo Section */}
+          <View style={styles.logoSectionSmall}>
+            <View style={styles.logoCircleSmall}>
+              <LinearGradient
+                colors={['#185FA5', '#0F4A7A']}
+                style={styles.logoGradientSmall}
+              >
+                <Ionicons name="person" size={32} color="#fff" />
+              </LinearGradient>
+            </View>
+            <Text style={styles.appTitleSmall}>Welcome Back!</Text>
+          </View>
+
+          {/* Form Card */}
+          <View style={styles.formCard}>
+            {/* User Info Display */}
+            <View style={styles.userInfoCard}>
+              <Text style={styles.userPhoneDisplay}>{formatPhoneNumber(userPhone)}</Text>
+              <TouchableOpacity onPress={handleChangePhone} style={styles.changePhoneLink}>
+                <Ionicons name="create-outline" size={14} color="#185FA5" />
+                <Text style={styles.changePhoneText}>Change Phone</Text>
+              </TouchableOpacity>
             </View>
 
-            {/* Form Card */}
-            <View style={styles.formCard}>
-              {/* User Info Display */}
-              <View style={styles.userInfoCard}>
-                
-                <Text style={styles.userPhoneDisplay}>{formatPhoneNumber(userPhone)}</Text>
-                <TouchableOpacity onPress={handleChangePhone} style={styles.changePhoneLink}>
-                  <Ionicons name="create-outline" size={14} color="#185FA5" />
-                  <Text style={styles.changePhoneText}>Change Phone</Text>
-                </TouchableOpacity>
-              </View>
+            <Text style={styles.formSubtitle}>Enter your password to continue</Text>
 
-              <Text style={styles.formSubtitle}>Enter your password to continue</Text>
-
-              <View style={styles.form}>
-                {/* Password Input with Eye Icon */}
-                <View style={[styles.passwordContainer, passwordFocused && styles.inputWrapperFocused]}>
-                  <Ionicons name="lock-closed-outline" size={20} color={passwordFocused ? "#185FA5" : "#9CA3AF"} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.passwordInput}
-                    placeholder="Password"
-                    placeholderTextColor="#9CA3AF"
-                    secureTextEntry={!showPassword}
-                    value={password}
-                    onChangeText={setPassword}
-                    //onFocus={() => setPasswordFocused(true)}
-                   // onBlur={() => setPasswordFocused(false)}
-                    //autoFocus={true}
+            <View style={styles.form}>
+              {/* Password Input */}
+              <View style={styles.passwordContainer}>
+                <Ionicons name="lock-closed-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.passwordInput}
+                  placeholder="Password"
+                  placeholderTextColor="#9CA3AF"
+                  secureTextEntry={!showPassword}
+                  value={password}
+                  onChangeText={setPassword}
+                />
+                <TouchableOpacity 
+                  style={styles.eyeIcon}
+                  onPress={togglePasswordVisibility}
+                >
+                  <Ionicons 
+                    name={showPassword ? "eye-off" : "eye"} 
+                    size={20} 
+                    color="#9CA3AF" 
                   />
-                  <TouchableOpacity 
-                    style={styles.eyeIcon}
-                    onPress={togglePasswordVisibility}
-                  >
-                    <Ionicons 
-                      name={showPassword ? "eye-off" : "eye"} 
-                      size={20} 
-                      color="#9CA3AF" 
-                    />
-                  </TouchableOpacity>
-                </View>
-
-                <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
-                  <TouchableOpacity 
-                    style={[styles.button, (isLoading || !password) && styles.disabledButton]} 
-                    onPress={handleLogin}
-                    onPressIn={handleButtonPressIn}
-                    onPressOut={handleButtonPressOut}
-                    disabled={isLoading || !password}
-                    activeOpacity={0.8}
-                  >
-                    <LinearGradient
-                      colors={!password ? ['#D1D5DB', '#D1D5DB'] : ['#185FA5', '#0F4A7A']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={styles.buttonGradient}
-                    >
-                      {isLoading ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <>
-                          <Text style={styles.buttonText}>Login</Text>
-                          <Ionicons name="log-in-outline" size={18} color="#fff" />
-                        </>
-                      )}
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </Animated.View>
-
-                <View style={styles.dividerContainer}>
-                  <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>or</Text>
-                  <View style={styles.dividerLine} />
-                </View>
-
-                <TouchableOpacity
-                  onPress={() => router.push('/login/ForgotPasswordScreen')}
-                  style={styles.linkWrapper}
-                >
-                  <Ionicons name="lock-closed-outline" size={16} color="#185FA5" />
-                  <Text style={styles.linkText}>Forgot Password?</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => router.push("/signup/SignupScreen")}
-                  style={styles.linkWrapper}
-                >
-                  <Ionicons name="person-add-outline" size={16} color="#185FA5" />
-                  <Text style={styles.linkText}>Don&apos;t have an account? Sign Up</Text>
                 </TouchableOpacity>
               </View>
+
+              <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
+                <TouchableOpacity 
+                  style={[styles.button, (isLoading || !password) && styles.disabledButton]} 
+                  onPress={handleLogin}
+                  onPressIn={handleButtonPressIn}
+                  onPressOut={handleButtonPressOut}
+                  disabled={isLoading || !password}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={!password ? ['#D1D5DB', '#D1D5DB'] : ['#185FA5', '#0F4A7A']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.buttonGradient}
+                  >
+                    {isLoading ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <Text style={styles.buttonText}>Login</Text>
+                        <Ionicons name="log-in-outline" size={18} color="#fff" />
+                      </>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              </Animated.View>
+
+              <View style={styles.dividerContainer}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>or</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <TouchableOpacity
+                onPress={() => router.push('/login/ForgotPasswordScreen')}
+                style={styles.linkWrapper}
+              >
+                <Ionicons name="lock-closed-outline" size={16} color="#185FA5" />
+                <Text style={styles.linkText}>Forgot Password?</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => router.push("/signup/SignupScreen")}
+                style={styles.linkWrapper}
+              >
+                <Ionicons name="person-add-outline" size={16} color="#185FA5" />
+                <Text style={styles.linkText}>Don&apos;t have an account? Sign Up</Text>
+              </TouchableOpacity>
             </View>
-          </Animated.View>
-        </ScrollView>
+          </View>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -421,8 +386,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-  scrollContent: {
-    flexGrow: 1,
+  flexContainer: {
+    flex: 1,
   },
   contentWrapper: {
     flex: 1,
@@ -541,24 +506,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
-  userAvatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    marginBottom: 12,
-    overflow: 'hidden',
-  },
-  avatarGradient: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  userAvatarText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#fff',
-  },
   userPhoneDisplay: {
     fontSize: 16,
     fontWeight: '600',
@@ -589,14 +536,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
     paddingHorizontal: 16,
-  },
-  inputWrapperFocused: {
-    borderColor: '#185FA5',
-    backgroundColor: '#fff',
-    shadowColor: '#185FA5',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
   },
   inputIcon: {
     marginRight: 12,

@@ -18,12 +18,11 @@ import {
 import { Stack, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView} from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { BASE_URL } from '@/helpers/core-service';
 
-
 const { width, height } = Dimensions.get('window');
-const API_URL = `${BASE_URL}`; // Your server IP
+const API_URL = `${BASE_URL}`;
 
 interface Product {
   id: number;
@@ -87,8 +86,6 @@ export default function ProductsManagementScreen() {
         url += `&status=${statusFilter}`;
       }
 
-      console.log('Fetching products from:', url);
-      
       const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -97,8 +94,6 @@ export default function ProductsManagementScreen() {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('Products data received:', data);
-        
         setProducts(data.products || []);
         setPagination(data.pagination || { total: 0, page, limit, pages: 0 });
       } else if (response.status === 403) {
@@ -124,7 +119,6 @@ export default function ProductsManagementScreen() {
   const handleSearch = (text: string) => {
     setSearchQuery(text);
     setPage(1);
-    // Debounce search
     const timeoutId = setTimeout(() => {
       fetchProducts();
     }, 500);
@@ -239,24 +233,25 @@ export default function ProductsManagementScreen() {
       }}
       activeOpacity={0.7}
     >
-      {/* Product Image */}
       <View style={styles.productImageContainer}>
         {getProductImage(item) ? (
           <Image 
             source={{ uri: getProductImage(item) as string }} 
             style={styles.productImage}
+            resizeMode="cover"
           />
         ) : (
-          <View style={[styles.productImagePlaceholder, { backgroundColor: getProductTypeColor(item.type) + '20' }]}>
+          <View style={[styles.productImagePlaceholder, { backgroundColor: getProductTypeColor(item.type) + '15' }]}>
             <Ionicons 
               name={getProductTypeIcon(item.type)} 
-              size={30} 
+              size={32} 
               color={getProductTypeColor(item.type)} 
             />
           </View>
         )}
         
         <View style={[styles.productTypeBadge, { backgroundColor: getProductTypeColor(item.type) }]}>
+          <Ionicons name={getProductTypeIcon(item.type)} size={10} color="#fff" />
           <Text style={styles.productTypeText}>
             {item.type === 'service' ? 'Service' : 'Product'}
           </Text>
@@ -277,33 +272,27 @@ export default function ProductsManagementScreen() {
           {item.description || 'No description'}
         </Text>
         
-        <View style={styles.productSeller}>
-          <Ionicons name="person" size={12} color="#666" />
-          <Text style={styles.sellerText} numberOfLines={1}>
-            {item.seller_name} • {item.seller_phone}
-          </Text>
+        <View style={styles.productMeta}>
+          <View style={styles.metaItem}>
+            <Ionicons name="person-outline" size={12} color="#999" />
+            <Text style={styles.metaText} numberOfLines={1}>
+              {item.seller_name}
+            </Text>
+          </View>
+          
+          {item.location && (
+            <View style={styles.metaItem}>
+              <Ionicons name="location-outline" size={12} color="#999" />
+              <Text style={styles.metaText} numberOfLines={1}>
+                {item.location}
+              </Text>
+            </View>
+          )}
         </View>
         
-        {item.location && (
-          <View style={styles.productLocation}>
-            <Ionicons name="location" size={12} color="#666" />
-            <Text style={styles.locationText} numberOfLines={1}>
-              {item.location}
-            </Text>
-          </View>
-        )}
-        
-        {item.category_name && (
-          <View style={styles.productCategory}>
-            <Ionicons name="pricetag" size={12} color="#666" />
-            <Text style={styles.categoryText}>
-              {item.category_name}
-            </Text>
-          </View>
-        )}
-        
         <View style={styles.productFooter}>
-          <View style={[styles.statusBadge, { backgroundColor: getProductStatusColor(item.status) + '20' }]}>
+          <View style={[styles.statusBadge, { backgroundColor: getProductStatusColor(item.status) + '15' }]}>
+            <View style={[styles.statusDot, { backgroundColor: getProductStatusColor(item.status) }]} />
             <Text style={[styles.statusText, { color: getProductStatusColor(item.status) }]}>
               {item.status || 'Active'}
             </Text>
@@ -319,15 +308,21 @@ export default function ProductsManagementScreen() {
 
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
-      <Ionicons name="cube-outline" size={80} color="#e0e0e0" />
+      <View style={styles.emptyIconContainer}>
+        <Ionicons name="cube-outline" size={60} color="#ccc" />
+      </View>
       <Text style={styles.emptyTitle}>No products found</Text>
       <Text style={styles.emptySubtitle}>
-        {searchQuery ? 'Try a different search' : 'No products or services uploaded yet'}
+        {searchQuery ? 'Try a different search term' : 'No products or services uploaded yet'}
       </Text>
       {searchQuery && (
         <TouchableOpacity 
           style={styles.clearSearchButton}
-          onPress={() => setSearchQuery('')}
+          onPress={() => {
+            setSearchQuery('');
+            setPage(1);
+            fetchProducts();
+          }}
         >
           <Text style={styles.clearSearchText}>Clear Search</Text>
         </TouchableOpacity>
@@ -348,9 +343,11 @@ export default function ProductsManagementScreen() {
           <Ionicons name="chevron-back" size={20} color={page === 1 ? '#ccc' : '#0A6BFF'} />
         </TouchableOpacity>
         
-        <Text style={styles.pageInfo}>
-          Page {page} of {pagination.pages}
-        </Text>
+        <View style={styles.pageInfoContainer}>
+          <Text style={styles.pageInfo}>
+            Page {page} of {pagination.pages}
+          </Text>
+        </View>
         
         <TouchableOpacity
           style={[styles.pageButton, page === pagination.pages && styles.pageButtonDisabled]}
@@ -366,61 +363,51 @@ export default function ProductsManagementScreen() {
   if (loading && products.length === 0) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0A6BFF" />
-        <Text style={styles.loadingText}>Loading products...</Text>
+        <View style={styles.loadingCard}>
+          <ActivityIndicator size="large" color="#0A6BFF" />
+          <Text style={styles.loadingText}>Loading products...</Text>
+        </View>
       </View>
     );
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-       <Stack.Screen
+      <Stack.Screen
         options={{
           header: () => (
-            <View
-              style={{
-                height: 90,
-                backgroundColor: '#3986f9',
-                flexDirection: 'row',
-                alignItems: 'flex-end',
-                paddingHorizontal: 16,
-                paddingBottom: 14,
-              }}
-            >
-              <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
+            <View style={styles.header}>
+              <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
                 <Ionicons name="arrow-back" size={24} color="#fff" />
               </TouchableOpacity>
-      
-              <Text
-                style={{
-                  color: '#fff',
-                  fontSize: 20,
-                  fontWeight: '600',
-                }}
-              >
-                Products &amp; Services
-              </Text>
+              <Text style={styles.headerTitle}>Products & Services</Text>
+              <TouchableOpacity onPress={onRefresh} style={styles.headerRefreshButton}>
+                <Ionicons name="refresh-outline" size={22} color="#fff" />
+              </TouchableOpacity>
             </View>
           ),
         }}
       />
       
-      {/* Fixed Header Section */}
       <View style={styles.headerSection}>
         <View style={styles.searchContainer}>
           <View style={styles.searchInputContainer}>
-            <Ionicons name="search" size={20} color="#999" style={styles.searchIcon} />
+            <Ionicons name="search-outline" size={20} color="#999" />
             <TextInput
               style={styles.searchInput}
-              placeholder="Search products/services..."
+              placeholder="Search products or services..."
               value={searchQuery}
               onChangeText={handleSearch}
               placeholderTextColor="#999"
               returnKeyType="search"
             />
             {searchQuery ? (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Ionicons name="close-circle" size={20} color="#999" />
+              <TouchableOpacity onPress={() => {
+                setSearchQuery('');
+                setPage(1);
+                fetchProducts();
+              }}>
+                <Ionicons name="close-circle" size={18} color="#999" />
               </TouchableOpacity>
             ) : null}
           </View>
@@ -429,54 +416,52 @@ export default function ProductsManagementScreen() {
             style={styles.filterButton}
             onPress={() => setFilterModalVisible(true)}
           >
-            <Ionicons name="filter" size={22} color="#0A6BFF" />
+            <Ionicons name="filter" size={20} color="#0A6BFF" />
+            {(typeFilter !== 'all' || statusFilter !== 'all') && (
+              <View style={styles.filterBadge} />
+            )}
           </TouchableOpacity>
         </View>
 
-        {/* Stats Overview */}
         <View style={styles.statsOverview}>
-          <View style={styles.statOverviewItem}>
-            <Text style={styles.statOverviewValue}>{pagination?.total || 0}</Text>
-            <Text style={styles.statOverviewLabel}>Total</Text>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{pagination?.total || 0}</Text>
+            <Text style={styles.statLabel}>Total</Text>
           </View>
-          <View style={styles.statOverviewDivider} />
-          <View style={styles.statOverviewItem}>
-            <Text style={styles.statOverviewValue}>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>
               {products.filter(p => p.type === 'product').length}
             </Text>
-            <Text style={styles.statOverviewLabel}>Products</Text>
+            <Text style={styles.statLabel}>Products</Text>
           </View>
-          <View style={styles.statOverviewDivider} />
-          <View style={styles.statOverviewItem}>
-            <Text style={styles.statOverviewValue}>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>
               {products.filter(p => p.type === 'service').length}
             </Text>
-            <Text style={styles.statOverviewLabel}>Services</Text>
+            <Text style={styles.statLabel}>Services</Text>
           </View>
         </View>
       </View>
 
-      {/* Scrollable Products List */}
-      <View style={styles.listContainer}>
-        <FlatList
-          data={products}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderProductItem}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={renderEmptyState}
-          ListFooterComponent={renderFooter}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={['#0A6BFF']}
-              tintColor="#0A6BFF"
-            />
-          }
-          showsVerticalScrollIndicator={true}
-          style={styles.flatList}
-        />
-      </View>
+      <FlatList
+        data={products}
+        keyExtractor={(item) => item.id.toString()}
+        renderItem={renderProductItem}
+        contentContainerStyle={styles.listContent}
+        ListEmptyComponent={renderEmptyState}
+        ListFooterComponent={renderFooter}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#0A6BFF']}
+            tintColor="#0A6BFF"
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      />
 
       {/* Filter Modal */}
       <Modal
@@ -494,51 +479,49 @@ export default function ProductsManagementScreen() {
               </TouchableOpacity>
             </View>
             
-            <Text style={styles.filterLabel}>Type</Text>
-            {['all', 'product', 'service'].map((filter) => (
-              <TouchableOpacity
-                key={filter}
-                style={styles.filterOption}
-                onPress={() => {
-                  setTypeFilter(filter);
-                  setFilterModalVisible(false);
-                  setPage(1);
-                }}
-              >
-                <View style={styles.filterRadio}>
-                  {typeFilter === filter && (
-                    <View style={styles.filterRadioSelected} />
-                  )}
-                </View>
-                <Text style={styles.filterOptionText}>
-                  {filter === 'all' ? 'All Types' : 
-                   filter === 'product' ? 'Products Only' : 'Services Only'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-            
-            <Text style={[styles.filterLabel, { marginTop: 20 }]}>Status</Text>
-            {['all', 'active', 'deleted'].map((filter) => (
-              <TouchableOpacity
-                key={filter}
-                style={styles.filterOption}
-                onPress={() => {
-                  setStatusFilter(filter);
-                  setFilterModalVisible(false);
-                  setPage(1);
-                }}
-              >
-                <View style={styles.filterRadio}>
-                  {statusFilter === filter && (
-                    <View style={styles.filterRadioSelected} />
-                  )}
-                </View>
-                <Text style={styles.filterOptionText}>
-                  {filter === 'all' ? 'All Status' : 
-                   filter === 'active' ? 'Active Only' : 'Deleted Only'}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.filterLabel}>Type</Text>
+              {['all', 'product', 'service'].map((filter) => (
+                <TouchableOpacity
+                  key={filter}
+                  style={styles.filterOption}
+                  onPress={() => {
+                    setTypeFilter(filter);
+                    setFilterModalVisible(false);
+                    setPage(1);
+                  }}
+                >
+                  <View style={styles.filterRadio}>
+                    {typeFilter === filter && <View style={styles.filterRadioSelected} />}
+                  </View>
+                  <Text style={styles.filterOptionText}>
+                    {filter === 'all' ? 'All Types' : 
+                     filter === 'product' ? 'Products Only' : 'Services Only'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              
+              <Text style={[styles.filterLabel, { marginTop: 20 }]}>Status</Text>
+              {['all', 'active', 'deleted'].map((filter) => (
+                <TouchableOpacity
+                  key={filter}
+                  style={styles.filterOption}
+                  onPress={() => {
+                    setStatusFilter(filter);
+                    setFilterModalVisible(false);
+                    setPage(1);
+                  }}
+                >
+                  <View style={styles.filterRadio}>
+                    {statusFilter === filter && <View style={styles.filterRadioSelected} />}
+                  </View>
+                  <Text style={styles.filterOptionText}>
+                    {filter === 'all' ? 'All Status' : 
+                     filter === 'active' ? 'Active Only' : 'Deleted Only'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
             
             <TouchableOpacity
               style={styles.clearFilterButton}
@@ -549,7 +532,7 @@ export default function ProductsManagementScreen() {
                 setPage(1);
               }}
             >
-              <Text style={styles.clearFilterText}>Clear Filters</Text>
+              <Text style={styles.clearFilterText}>Clear All Filters</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -565,7 +548,7 @@ export default function ProductsManagementScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.actionModalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Product Actions</Text>
+              <Text style={styles.modalTitle}>Product Details</Text>
               <TouchableOpacity 
                 onPress={() => setModalVisible(false)}
                 disabled={actionLoading}
@@ -577,17 +560,18 @@ export default function ProductsManagementScreen() {
             {selectedProduct && (
               <>
                 <ScrollView 
+                  showsVerticalScrollIndicator={false}
                   style={styles.productModalScroll}
-                  showsVerticalScrollIndicator={true}
                 >
                   <View style={styles.productModalHeader}>
                     {getProductImage(selectedProduct) ? (
                       <Image 
                         source={{ uri: getProductImage(selectedProduct) as string }} 
                         style={styles.productModalImage}
+                        resizeMode="cover"
                       />
                     ) : (
-                      <View style={[styles.productModalImagePlaceholder, { backgroundColor: getProductTypeColor(selectedProduct.type) + '20' }]}>
+                      <View style={[styles.productModalImagePlaceholder, { backgroundColor: getProductTypeColor(selectedProduct.type) + '15' }]}>
                         <Ionicons 
                           name={getProductTypeIcon(selectedProduct.type)} 
                           size={50} 
@@ -596,7 +580,8 @@ export default function ProductsManagementScreen() {
                       </View>
                     )}
                     
-                    <View style={styles.productModalTypeBadge}>
+                    <View style={[styles.productModalTypeBadge, { backgroundColor: getProductTypeColor(selectedProduct.type) }]}>
+                      <Ionicons name={getProductTypeIcon(selectedProduct.type)} size={14} color="#fff" />
                       <Text style={styles.productModalTypeText}>
                         {selectedProduct.type === 'service' ? 'SERVICE' : 'PRODUCT'}
                       </Text>
@@ -619,73 +604,60 @@ export default function ProductsManagementScreen() {
                       </Text>
                     </View>
 
-                    <View style={styles.detailRow}>
-                      <View style={styles.detailItem}>
-                        <Ionicons name="person" size={16} color="#666" />
+                    <View style={styles.detailCard}>
+                      <View style={styles.detailRow}>
+                        <Ionicons name="person-outline" size={18} color="#666" />
                         <Text style={styles.detailLabel}>Seller:</Text>
                         <Text style={styles.detailValue}>{selectedProduct.seller_name}</Text>
                       </View>
-                      <Text style={styles.detailPhone}>{selectedProduct.seller_phone}</Text>
-                    </View>
 
-                    {selectedProduct.seller_email && (
                       <View style={styles.detailRow}>
-                        <View style={styles.detailItem}>
-                          <Ionicons name="mail" size={16} color="#666" />
+                        <Ionicons name="call-outline" size={18} color="#666" />
+                        <Text style={styles.detailLabel}>Phone:</Text>
+                        <Text style={styles.detailValue}>{selectedProduct.seller_phone}</Text>
+                      </View>
+
+                      {selectedProduct.seller_email && (
+                        <View style={styles.detailRow}>
+                          <Ionicons name="mail-outline" size={18} color="#666" />
                           <Text style={styles.detailLabel}>Email:</Text>
                           <Text style={styles.detailValue}>{selectedProduct.seller_email}</Text>
                         </View>
-                      </View>
-                    )}
+                      )}
 
-                    {selectedProduct.location && (
-                      <View style={styles.detailRow}>
-                        <View style={styles.detailItem}>
-                          <Ionicons name="location" size={16} color="#666" />
+                      {selectedProduct.location && (
+                        <View style={styles.detailRow}>
+                          <Ionicons name="location-outline" size={18} color="#666" />
                           <Text style={styles.detailLabel}>Location:</Text>
                           <Text style={styles.detailValue}>{selectedProduct.location}</Text>
                         </View>
-                      </View>
-                    )}
+                      )}
 
-                    {selectedProduct.category_name && (
-                      <View style={styles.detailRow}>
-                        <View style={styles.detailItem}>
-                          <Ionicons name="pricetag" size={16} color="#666" />
+                      {selectedProduct.category_name && (
+                        <View style={styles.detailRow}>
+                          <Ionicons name="pricetag-outline" size={18} color="#666" />
                           <Text style={styles.detailLabel}>Category:</Text>
                           <Text style={styles.detailValue}>{selectedProduct.category_name}</Text>
                         </View>
-                      </View>
-                    )}
+                      )}
 
-                    <View style={styles.detailRow}>
-                      <View style={styles.detailItem}>
-                        <Ionicons name="calendar" size={16} color="#666" />
+                      <View style={styles.detailRow}>
+                        <Ionicons name="calendar-outline" size={18} color="#666" />
                         <Text style={styles.detailLabel}>Created:</Text>
                         <Text style={styles.detailValue}>{formatDate(selectedProduct.created_at)}</Text>
                       </View>
-                    </View>
 
-                    <View style={styles.detailRow}>
-                      <View style={styles.detailItem}>
-                        <Ionicons name="shield" size={16} color="#666" />
+                      <View style={styles.detailRow}>
+                        <Ionicons name="shield-outline" size={18} color="#666" />
                         <Text style={styles.detailLabel}>Status:</Text>
-                        <View style={[styles.statusBadgeModal, { backgroundColor: getProductStatusColor(selectedProduct.status) + '20' }]}>
+                        <View style={[styles.statusBadgeModal, { backgroundColor: getProductStatusColor(selectedProduct.status) + '15' }]}>
+                          <View style={[styles.statusDotModal, { backgroundColor: getProductStatusColor(selectedProduct.status) }]} />
                           <Text style={[styles.statusTextModal, { color: getProductStatusColor(selectedProduct.status) }]}>
                             {selectedProduct.status || 'Active'}
                           </Text>
                         </View>
                       </View>
                     </View>
-
-                    {selectedProduct.attributes && (
-                      <View style={styles.detailSection}>
-                        <Text style={styles.detailSectionTitle}>Attributes</Text>
-                        <Text style={styles.detailSectionContent}>
-                          {JSON.stringify(selectedProduct.attributes, null, 2)}
-                        </Text>
-                      </View>
-                    )}
                   </View>
                 </ScrollView>
 
@@ -699,7 +671,7 @@ export default function ProductsManagementScreen() {
                       <ActivityIndicator color="#fff" size="small" />
                     ) : (
                       <>
-                        <Ionicons name="archive" size={20} color="#fff" />
+                        <Ionicons name="archive-outline" size={20} color="#fff" />
                         <Text style={styles.actionButtonText}>Soft Delete</Text>
                       </>
                     )}
@@ -714,7 +686,7 @@ export default function ProductsManagementScreen() {
                       <ActivityIndicator color="#fff" size="small" />
                     ) : (
                       <>
-                        <Ionicons name="trash" size={20} color="#fff" />
+                        <Ionicons name="trash-outline" size={20} color="#fff" />
                         <Text style={styles.actionButtonText}>Delete Permanently</Text>
                       </>
                     )}
@@ -734,19 +706,107 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8f9fa',
   },
+  header: {
+    height: 100,
+    backgroundColor: '#0A6BFF',
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  backButton: {
+    padding: 8,
+    marginLeft: -8,
+  },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  headerRefreshButton: {
+    padding: 8,
+  },
   headerSection: {
     backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
-  listContainer: {
-    flex: 1,
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
   },
-  flatList: {
+  searchInputContainer: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 44,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#333',
+  },
+  filterButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#f0f8ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#0A6BFF',
+  },
+  statsOverview: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    gap: 12,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: '#999',
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: '#f0f0f0',
   },
   listContent: {
-    paddingHorizontal: 12,
+    padding: 12,
     paddingBottom: 20,
-    paddingTop: 4,
   },
   loadingContainer: {
     flex: 1,
@@ -754,232 +814,157 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#f8f9fa',
   },
+  loadingCard: {
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 30,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
   loadingText: {
-    marginTop: 10,
+    marginTop: 15,
     fontSize: 14,
     color: '#666',
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  searchInputContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    marginRight: 10,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    height: 40,
-    fontSize: 15,
-    color: '#333',
-  },
-  filterButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
-    backgroundColor: '#f0f8ff',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statsOverview: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    marginHorizontal: 12,
-    marginTop: 8,
-    marginBottom: 4,
-    borderRadius: 8,
-    paddingVertical: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  statOverviewItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statOverviewValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 2,
-  },
-  
-  statOverviewLabel: {
-    fontSize: 10,
-    color: '#666',
-  },
-  statOverviewDivider: {
-    width: 1,
-    backgroundColor: '#eee',
   },
   productItem: {
     flexDirection: 'row',
     backgroundColor: '#fff',
     borderRadius: 12,
-    marginBottom: 8,
+    marginBottom: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
-    elevation: 1,
-    borderWidth: 1,
-    borderColor: '#f0f0f0',
+    elevation: 2,
     overflow: 'hidden',
-    minHeight: 100, // Reduced from 140
   },
   productImageContainer: {
-    width: 90, // Reduced from 120
+    width: 110,
+    height: 110,
     position: 'relative',
   },
-  
   productImage: {
     width: '100%',
     height: '100%',
     backgroundColor: '#f5f5f5',
   },
-  
   productImagePlaceholder: {
     width: '100%',
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
   },
-  
   productTypeBadge: {
     position: 'absolute',
-    top: 6,
-    left: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    top: 8,
+    left: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
   },
   productTypeText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '700',
     color: '#fff',
   },
-  
   productInfo: {
     flex: 1,
-    padding: 10,
-    justifyContent: 'space-between',
+    padding: 12,
   },
-  
   productHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 4,
+    marginBottom: 6,
   },
-  
   productName: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
     color: '#333',
     flex: 1,
     marginRight: 8,
   },
-  
   productPrice: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
     color: '#0A6BFF',
   },
-  
   productDescription: {
+    fontSize: 12,
+    color: '#666',
+    lineHeight: 16,
+    marginBottom: 8,
+  },
+  productMeta: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 8,
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  metaText: {
     fontSize: 11,
-    color: '#666',
-    lineHeight: 14,
-    marginBottom: 4,
-  },
-  
-  productSeller: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  sellerText: {
-    fontSize: 10,
-    color: '#666',
-    marginLeft: 4,
-    flex: 1,
-  },
-  
-  productLocation: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  
-  locationText: {
-    fontSize: 10,
-    color: '#666',
-    marginLeft: 4,
-    flex: 1,
-  },
-  productCategory: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  
-  categoryText: {
-    fontSize: 10,
-    color: '#666',
-    marginLeft: 4,
+    color: '#999',
   },
   productFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 2,
   },
-   statusBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 6,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   statusText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '600',
   },
-  
   productDate: {
-    fontSize: 9,
+    fontSize: 10,
     color: '#999',
   },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
-    minHeight: 300,
+    paddingVertical: 80,
+  },
+  emptyIconContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#f5f5f5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
   },
   emptyTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#999',
-    marginTop: 16,
+    color: '#666',
     marginBottom: 8,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: '#ccc',
+    color: '#999',
     textAlign: 'center',
     marginBottom: 20,
   },
@@ -987,7 +972,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
     backgroundColor: '#0A6BFF',
-    borderRadius: 8,
+    borderRadius: 10,
   },
   clearSearchText: {
     color: '#fff',
@@ -999,18 +984,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 20,
+    gap: 16,
   },
   pageButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#f0f8ff',
     justifyContent: 'center',
     alignItems: 'center',
-    marginHorizontal: 10,
   },
   pageButtonDisabled: {
     backgroundColor: '#f5f5f5',
+  },
+  pageInfoContainer: {
+    paddingHorizontal: 16,
   },
   pageInfo: {
     fontSize: 14,
@@ -1027,13 +1015,13 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
-    maxHeight: height * 0.6,
+    maxHeight: height * 0.7,
   },
   actionModalContent: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: height * 0.85,
+    maxHeight: height * 0.9,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1045,7 +1033,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#333',
   },
   filterLabel: {
@@ -1078,23 +1066,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#0A6BFF',
   },
   filterOptionText: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#333',
   },
   clearFilterButton: {
     marginTop: 20,
     paddingVertical: 12,
     backgroundColor: '#f5f5f5',
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
   },
   clearFilterText: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#666',
     fontWeight: '500',
   },
   productModalScroll: {
-    maxHeight: height * 0.5,
+    maxHeight: height * 0.55,
   },
   productModalHeader: {
     alignItems: 'center',
@@ -1103,25 +1091,27 @@ const styles = StyleSheet.create({
     borderBottomColor: '#f0f0f0',
   },
   productModalImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
-    marginBottom: 10,
+    width: 120,
+    height: 120,
+    borderRadius: 12,
+    marginBottom: 12,
   },
   productModalImagePlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
+    width: 120,
+    height: 120,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   productModalTypeBadge: {
-    backgroundColor: '#0A6BFF',
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 6,
-    marginBottom: 8,
+    borderRadius: 8,
+    gap: 6,
+    marginBottom: 12,
   },
   productModalTypeText: {
     fontSize: 12,
@@ -1130,7 +1120,7 @@ const styles = StyleSheet.create({
   },
   productModalName: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#333',
     marginBottom: 8,
     textAlign: 'center',
@@ -1144,7 +1134,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   detailSection: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   detailSectionTitle: {
     fontSize: 16,
@@ -1157,22 +1147,21 @@ const styles = StyleSheet.create({
     color: '#666',
     lineHeight: 20,
   },
+  detailCard: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+  },
   detailRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
+    gap: 8,
   },
   detailLabel: {
     fontSize: 14,
     color: '#666',
-    marginLeft: 8,
-    marginRight: 4,
+    fontWeight: '500',
   },
   detailValue: {
     fontSize: 14,
@@ -1180,16 +1169,18 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     flex: 1,
   },
-  detailPhone: {
-    fontSize: 14,
-    color: '#0A6BFF',
-    fontWeight: '500',
-  },
   statusBadgeModal: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 6,
-    marginLeft: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  statusDotModal: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   statusTextModal: {
     fontSize: 12,
@@ -1197,6 +1188,7 @@ const styles = StyleSheet.create({
   },
   actionButtons: {
     padding: 20,
+    gap: 12,
     borderTopWidth: 1,
     borderTopColor: '#f0f0f0',
   },
@@ -1204,9 +1196,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 15,
+    paddingVertical: 14,
     borderRadius: 12,
-    marginBottom: 10,
+    gap: 8,
   },
   softDeleteButton: {
     backgroundColor: '#FF9500',
@@ -1216,8 +1208,7 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    marginLeft: 10,
   },
 });

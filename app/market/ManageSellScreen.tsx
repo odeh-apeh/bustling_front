@@ -1250,7 +1250,7 @@ useFocusEffect(
                   )}
                 </LinearGradient>
               </TouchableOpacity>
-              
+              <View style={{ height: 100 }} />
               <View style={styles.modalBottomSpace} />
             </ScrollView>
           </View>
